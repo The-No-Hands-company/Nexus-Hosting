@@ -2,6 +2,7 @@ import app from "./app";
 import { db, nodesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { generateKeyPair } from "./lib/federation";
+import { startHealthMonitor } from "./lib/healthMonitor";
 import logger from "./lib/logger";
 import http from "http";
 
@@ -80,6 +81,8 @@ ensureLocalNode()
     server.listen(port, () => {
       logger.info({ port, env: process.env.NODE_ENV ?? "development" }, "Server listening");
     });
+
+    startHealthMonitor();
 
     process.on("SIGTERM", () => gracefulShutdown(server, "SIGTERM"));
     process.on("SIGINT", () => gracefulShutdown(server, "SIGINT"));
