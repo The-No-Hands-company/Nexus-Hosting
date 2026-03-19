@@ -14,6 +14,7 @@ export const sitesTable = pgTable("sites", {
   siteType: siteTypeEnum("site_type").notNull().default("static"),
   ownerName: text("owner_name").notNull(),
   ownerEmail: text("owner_email").notNull(),
+  ownerId: text("owner_id"),
   primaryNodeId: integer("primary_node_id"),
   replicaCount: integer("replica_count").notNull().default(1),
   storageUsedMb: real("storage_used_mb").notNull().default(0),

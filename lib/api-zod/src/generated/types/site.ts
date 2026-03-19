@@ -19,6 +19,8 @@ export interface Site {
   ownerName: string;
   ownerEmail: string;
   /** @nullable */
+  ownerId: string | null;
+  /** @nullable */
   primaryNodeId: number | null;
   /** @nullable */
   primaryNodeDomain: string | null;

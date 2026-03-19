@@ -114,6 +114,8 @@ export interface Site {
   ownerName: string;
   ownerEmail: string;
   /** @nullable */
+  ownerId: string | null;
+  /** @nullable */
   primaryNodeId: number | null;
   /** @nullable */
   primaryNodeDomain: string | null;
@@ -173,3 +175,118 @@ export interface UpdateSiteBody {
   primaryNodeId?: number;
   replicaCount?: number;
 }
+
+export interface SiteFileUploadUrlBody {
+  /** Relative path within the site (e.g. index.html, css/style.css) */
+  filePath: string;
+  contentType: string;
+  size: number;
+}
+
+export interface SiteFileUploadUrlResponse {
+  uploadUrl: string;
+  objectPath: string;
+  filePath: string;
+}
+
+export interface RegisterSiteFileBody {
+  filePath: string;
+  objectPath: string;
+  contentType: string;
+  sizeBytes: number;
+}
+
+export interface SiteFile {
+  id: number;
+  siteId: number;
+  /** @nullable */
+  deploymentId?: number | null;
+  filePath: string;
+  objectPath: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export type SiteDeploymentStatus =
+  (typeof SiteDeploymentStatus)[keyof typeof SiteDeploymentStatus];
+
+export const SiteDeploymentStatus = {
+  pending: "pending",
+  active: "active",
+  failed: "failed",
+  rolled_back: "rolled_back",
+} as const;
+
+export interface SiteDeployment {
+  id: number;
+  siteId: number;
+  version: number;
+  status: SiteDeploymentStatus;
+  /** @nullable */
+  deployedBy?: string | null;
+  fileCount: number;
+  totalSizeMb: number;
+  deployedAt: string;
+}
+
+export interface AuthUser {
+  id: string;
+  /** @nullable */
+  email: string | null;
+  /** @nullable */
+  firstName: string | null;
+  /** @nullable */
+  lastName: string | null;
+  /** @nullable */
+  profileImageUrl: string | null;
+}
+
+export interface GetCurrentAuthUserResponse {
+  user: AuthUser | null;
+}
+
+export interface ExchangeMobileAuthorizationCodeBody {
+  /** @minLength 1 */
+  code: string;
+  /** @minLength 1 */
+  code_verifier: string;
+  /** @minLength 1 */
+  redirect_uri: string;
+  /** @minLength 1 */
+  state: string;
+  /** @minLength 1 */
+  nonce?: string;
+}
+
+export interface ExchangeMobileAuthorizationCodeResponse {
+  token: string;
+}
+
+export interface LogoutMobileSessionResponse {
+  success: boolean;
+}
+
+export interface RequestUploadUrlBody {
+  /** @minLength 1 */
+  name: string;
+  /** @minimum 1 */
+  size: number;
+  /** @minLength 1 */
+  contentType: string;
+}
+
+export interface RequestUploadUrlResponse {
+  uploadURL: string;
+  objectPath: string;
+  metadata?: RequestUploadUrlBody;
+}
+
+/**
+ * Opaque session token — Bearer <sid>
+ */
+export type AuthorizationSessionHeaderParameter = string;
+
+export type BeginBrowserLoginParams = {
+  returnTo?: string;
+};

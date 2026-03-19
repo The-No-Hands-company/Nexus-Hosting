@@ -17,6 +17,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Build**: esbuild (CJS bundle)
 
 ## GitHub
+
 Repository: https://github.com/The-No-Hands-company/Federated-Hosting
 To push future changes from the Shell tab:
 ```
@@ -24,24 +25,76 @@ git push github master:main
 ```
 Token stored as secret: `GITHUB_PERSONAL_ACCESS_TOKEN`
 
-## Project: Federated Hosting
+## Project: Federated Hosting Service
 
-A web platform for managing a federated web hosting network — inspired by the Matrix/Mastodon federation model but for hosting websites across independent nodes.
+A **real federated hosting service** — users log in, upload website files, deploy sites, and independent nodes form a cryptographically verified federation network to collectively host websites.
 
-### Features
-- **Dashboard** — federation-wide health overview with stats, network throughput chart, and live node status grid
-- **Federation Nodes** — browse, register, and manage hosting nodes; each node shows region, operator, capacity, uptime, site count, and status
-- **Hosted Sites** — browse and register websites across the federation; shows site type, status, primary node, replicas, and bandwidth
-- **Detail pages** — full details for individual nodes and sites
-- **Seed data** — 5 sample nodes across EU, NA, APAC regions and 7 sample sites
+### Architecture Phases
 
-### Stack additions
+#### Phase 1 — Auth + Object Storage + Site Serving ✅
+- **Replit Auth** — OpenID Connect login; users own sites and deployments
+- **Object Storage** — presigned URL upload flow to Replit object storage
+- **Site Serving** — `GET /api/sites/serve/:domain/*` streams files from object storage
+- **DB tables** — `users`, `sessions`, `site_deployments`, `site_files` (+ `ownerId` on `sites`)
+- **Frontend** — My Sites page, Deploy Site page with drag-and-drop uploader
+
+#### Phase 2 — Federation Protocol ✅
+- **Ed25519 key pairs** — each node gets a cryptographic identity; generated on creation via `crypto.generateKeyPairSync("ed25519")`
+- **`/.well-known/federation`** — discovery endpoint returning node metadata, public key, capabilities
+- **`POST /api/federation/handshake`** — initiates signed handshake with a remote node
+- **`POST /api/federation/ping`** — receives Ed25519-signed ping; verifies and updates node `verifiedAt`
+- **`POST /api/nodes/:id/generate-keys`** — rotate Ed25519 key pair for any node
+- **`federation_events` table** — persistent log of all handshake/ping/sync/offline events
+- **Deploy → replication** — on site deploy, notifies all active peer nodes via signed `site_sync` events
+- **Federation Protocol page** — UI for node identity, handshake initiation, event log, API reference
+
+#### Phase 3 — Subdomain Routing + Replication ✅
+- **Host-header routing** (`middleware/hostRouter.ts`) — any request with a `Host` header matching a registered site domain is served directly (bypasses `/api/sites/serve`)
+- **Replication on deploy** — deploy endpoint iterates active peers, sends signed `site_sync` notification with `X-Federation-Signature` header
+- **Node capacity API** — `GET /api/capacity/summary` (network overview), `GET /api/nodes/:id/capacity` (per-node storage stats), `POST /api/nodes/:id/update-capacity`
+- **Auto-init startup** — `index.ts` ensures a local node record exists with Ed25519 keys on every boot
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `artifacts/api-server/src/lib/federation.ts` | Ed25519 key gen, sign, verify helpers |
+| `artifacts/api-server/src/lib/objectStorage.ts` | Object storage (presigned upload/download) |
+| `artifacts/api-server/src/middleware/hostRouter.ts` | Phase 3: host-header site routing |
+| `artifacts/api-server/src/routes/federation.ts` | Federation protocol endpoints |
+| `artifacts/api-server/src/routes/capacity.ts` | Node capacity management |
+| `artifacts/api-server/src/routes/deploy.ts` | File upload, site deploy, replication |
+| `artifacts/api-server/src/routes/auth.ts` | Replit Auth OIDC routes |
+| `lib/db/src/schema/nodes.ts` | Nodes table (Ed25519 keys, isLocalNode) |
+| `lib/db/src/schema/federation.ts` | Federation events table |
+| `lib/db/src/schema/deployments.ts` | site_deployments + site_files tables |
+| `artifacts/federated-hosting/src/pages/Federation.tsx` | Federation Protocol UI page |
+| `artifacts/federated-hosting/src/pages/MySites.tsx` | Authenticated site management |
+| `artifacts/federated-hosting/src/pages/DeploySite.tsx` | File upload + deployment UI |
+
+### Federation Protocol
+
+```
+GET  /.well-known/federation          Node discovery (name, publicKey, capabilities)
+POST /api/federation/ping             Signed ping verification
+POST /api/federation/handshake        Initiate handshake with remote node
+GET  /api/federation/peers            List registered federation peers
+GET  /api/federation/events           Event log (last 100 events)
+POST /api/federation/notify-sync      Notify peers of a site deployment
+POST /api/nodes/:id/generate-keys     Generate/rotate Ed25519 keys
+GET  /api/capacity/summary            Network-wide capacity overview
+GET  /api/nodes/:id/capacity          Per-node capacity stats
+```
+
+### Stack additions (post-initial-scaffold)
+
 - `artifacts/federated-hosting` — React + Vite frontend (at path `/`)
-- `lib/db/src/schema/nodes.ts` — nodes table with federation node data
+- `lib/db/src/schema/nodes.ts` — nodes table with federation node data + Ed25519 keys
 - `lib/db/src/schema/sites.ts` — sites table with hosted site data
-- `artifacts/api-server/src/routes/nodes.ts` — CRUD for nodes
-- `artifacts/api-server/src/routes/sites.ts` — CRUD for sites
-- `artifacts/api-server/src/routes/stats.ts` — aggregate federation stats
+- `lib/db/src/schema/deployments.ts` — site_deployments + site_files tables
+- `lib/db/src/schema/federation.ts` — federation_events table
+- `lib/integrations/replit-auth-web` — `useAuth()` hook (no AuthProvider needed)
+- `lib/integrations/object-storage` — ObjectStorageService wrapper
 - `scripts/src/seed.ts` — seed script for sample data
 
 ## Structure
@@ -49,18 +102,34 @@ A web platform for managing a federated web hosting network — inspired by the 
 ```text
 artifacts-monorepo/
 ├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
+│   ├── api-server/         # Express API server
+│   │   └── src/
+│   │       ├── app.ts               # Express setup + host router + .well-known
+│   │       ├── index.ts             # Startup + ensureLocalNode()
+│   │       ├── lib/federation.ts    # Ed25519 crypto helpers
+│   │       ├── lib/objectStorage.ts # Object storage service
+│   │       ├── middleware/
+│   │       │   ├── authMiddleware.ts
+│   │       │   └── hostRouter.ts    # Phase 3: host-header site routing
+│   │       └── routes/
+│   │           ├── auth.ts, deploy.ts, federation.ts
+│   │           ├── capacity.ts, nodes.ts, sites.ts, stats.ts
+│   └── federated-hosting/  # React + Vite frontend
+│       └── src/pages/
+│           ├── Dashboard.tsx, Federation.tsx
+│           ├── MySites.tsx, DeploySite.tsx
+│           └── nodes/, sites/
 ├── lib/                    # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
 │   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+│   ├── db/                 # Drizzle ORM schema + DB connection
+│   └── integrations/       # replit-auth-web, object-storage
+├── scripts/                # Utility scripts
+├── pnpm-workspace.yaml
+├── tsconfig.base.json
+├── tsconfig.json
+└── package.json
 ```
 
 ## TypeScript & Composite Projects
@@ -76,49 +145,11 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
 - `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
 
-## Packages
+## Key Notes
 
-### `artifacts/api-server` (`@workspace/api-server`)
-
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
-
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
-
-### `lib/db` (`@workspace/db`)
-
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
-
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
-
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
-
-### `lib/api-spec` (`@workspace/api-spec`)
-
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages:
-
-1. `lib/api-client-react/src/generated/` — React Query hooks + fetch client
-2. `lib/api-zod/src/generated/` — Zod schemas
-
-Run codegen: `pnpm --filter @workspace/api-spec run codegen`
-
-### `lib/api-zod` (`@workspace/api-zod`)
-
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
-
-### `lib/api-client-react` (`@workspace/api-client-react`)
-
-Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
-
-### `scripts` (`@workspace/scripts`)
-
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+- **Auth**: `useAuth()` from `@workspace/replit-auth-web` — no AuthProvider needed. Routes: `/api/login`, `/api/callback`, `/api/logout`, `/api/auth/user`
+- **Zod names**: Orval generates names from operationId. Verify with `grep "export const" lib/api-zod/src/generated/api.ts`
+- **Date serialization**: call `serializeDates()` from `artifacts/api-server/src/lib/serialize.ts` before `.parse()` in routes
+- **pnpm overrides**: root package.json has react 19.1.0 override for Uppy compatibility
+- **Local node**: On startup, `ensureLocalNode()` creates node record with Ed25519 keys if none exists; manually update `is_local_node=1` if needed
+- **DB push**: `pnpm --filter @workspace/db run push` to sync schema changes

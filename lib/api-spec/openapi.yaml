@@ -15,13 +15,19 @@ tags:
     description: Hosted site operations
   - name: stats
     description: Federation statistics
+  - name: Auth
+    description: Browser and mobile authentication endpoints
+  - name: Storage
+    description: Object storage upload and serving endpoints
+  - name: deploy
+    description: Site deployment and serving
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -35,7 +41,6 @@ paths:
       operationId: getFederationStats
       tags: [stats]
       summary: Get federation statistics
-      description: Returns aggregate stats for the entire federation
       responses:
         "200":
           description: Federation statistics
@@ -49,7 +54,6 @@ paths:
       operationId: listNodes
       tags: [nodes]
       summary: List all nodes
-      description: Returns all federation nodes
       responses:
         "200":
           description: List of nodes
@@ -161,7 +165,6 @@ paths:
       operationId: listSites
       tags: [sites]
       summary: List all sites
-      description: Returns all sites registered in the federation
       responses:
         "200":
           description: List of sites
@@ -268,7 +271,325 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /sites/{id}/files/upload-url:
+    post:
+      operationId: getSiteFileUploadUrl
+      tags: [deploy]
+      summary: Get presigned URL to upload a site file
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteFileUploadUrlBody"
+      responses:
+        "200":
+          description: Presigned upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteFileUploadUrlResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sites/{id}/files:
+    post:
+      operationId: registerSiteFile
+      tags: [deploy]
+      summary: Register an uploaded file for a site
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterSiteFileBody"
+      responses:
+        "201":
+          description: File registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteFile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: listSiteFiles
+      tags: [deploy]
+      summary: List files for a site
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of site files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SiteFile"
+
+  /sites/{id}/deploy:
+    post:
+      operationId: deploySite
+      tags: [deploy]
+      summary: Activate a deployment for a site
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deployment activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteDeployment"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sites/{id}/deployments:
+    get:
+      operationId: listSiteDeployments
+      tags: [deploy]
+      summary: List deployments for a site
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of deployments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SiteDeployment"
+
+  /auth/user:
+    get:
+      tags: [Auth]
+      operationId: getCurrentAuthUser
+      summary: Get the currently authenticated user
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Auth status resolved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetCurrentAuthUserResponse"
+
+  /login:
+    get:
+      tags: [Auth]
+      operationId: beginBrowserLogin
+      summary: Start the browser OIDC login flow
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the OIDC authorization endpoint
+
+  /callback:
+    get:
+      tags: [Auth]
+      operationId: handleBrowserLoginCallback
+      summary: Complete the browser OIDC login flow
+      responses:
+        "302":
+          description: Redirect to returnTo or /api/login on failure
+
+  /logout:
+    get:
+      tags: [Auth]
+      operationId: logoutBrowserSession
+      summary: Clear session and begin OIDC logout
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "302":
+          description: Redirect to OIDC logout URL
+
+  /mobile-auth/token-exchange:
+    post:
+      tags: [Auth]
+      operationId: exchangeMobileAuthorizationCode
+      summary: Exchange a mobile OIDC code for a session token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeBody"
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mobile-auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logoutMobileSession
+      summary: Delete a mobile session token
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutMobileSessionResponse"
+
+  /storage/uploads/request-url:
+    post:
+      tags: [Storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestUploadUrlBody"
+      responses:
+        "200":
+          description: Presigned upload URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestUploadUrlResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /storage/public-objects/{filePath}:
+    get:
+      tags: [Storage]
+      operationId: getPublicObject
+      summary: Serve a public asset
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+
+  /storage/objects/{objectPath}:
+    get:
+      tags: [Storage]
+      operationId: getStorageObject
+      summary: Serve an object entity
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
+  parameters:
+    AuthorizationSessionHeader:
+      name: Authorization
+      in: header
+      required: false
+      description: Opaque session token — Bearer <sid>
+      schema:
+        type: string
+    SessionCookie:
+      name: sid
+      in: cookie
+      required: false
+      description: Browser session cookie
+      schema:
+        type: string
+
   schemas:
     HealthStatus:
       type: object
@@ -437,6 +758,8 @@ components:
           type: string
         ownerEmail:
           type: string
+        ownerId:
+          type: ["string", "null"]
         primaryNodeId:
           type: ["integer", "null"]
         primaryNodeDomain:
@@ -460,6 +783,7 @@ components:
         - siteType
         - ownerName
         - ownerEmail
+        - ownerId
         - primaryNodeId
         - primaryNodeDomain
         - replicaCount
@@ -510,3 +834,165 @@ components:
           type: integer
         replicaCount:
           type: integer
+
+    SiteFileUploadUrlBody:
+      type: object
+      required: [filePath, contentType, size]
+      properties:
+        filePath:
+          type: string
+          description: Relative path within the site (e.g. index.html, css/style.css)
+        contentType:
+          type: string
+        size:
+          type: integer
+
+    SiteFileUploadUrlResponse:
+      type: object
+      required: [uploadUrl, objectPath, filePath]
+      properties:
+        uploadUrl:
+          type: string
+        objectPath:
+          type: string
+        filePath:
+          type: string
+
+    RegisterSiteFileBody:
+      type: object
+      required: [filePath, objectPath, contentType, sizeBytes]
+      properties:
+        filePath:
+          type: string
+        objectPath:
+          type: string
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+
+    SiteFile:
+      type: object
+      required: [id, siteId, filePath, objectPath, contentType, sizeBytes, createdAt]
+      properties:
+        id:
+          type: integer
+        siteId:
+          type: integer
+        deploymentId:
+          type: ["integer", "null"]
+        filePath:
+          type: string
+        objectPath:
+          type: string
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+        createdAt:
+          type: string
+
+    SiteDeployment:
+      type: object
+      required: [id, siteId, version, status, fileCount, totalSizeMb, deployedAt]
+      properties:
+        id:
+          type: integer
+        siteId:
+          type: integer
+        version:
+          type: integer
+        status:
+          type: string
+          enum: [pending, active, failed, rolled_back]
+        deployedBy:
+          type: ["string", "null"]
+        fileCount:
+          type: integer
+        totalSizeMb:
+          type: number
+        deployedAt:
+          type: string
+
+    AuthUser:
+      type: object
+      required: [id, email, firstName, lastName, profileImageUrl]
+      properties:
+        id:
+          type: string
+        email:
+          type: ["string", "null"]
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        profileImageUrl:
+          type: ["string", "null"]
+
+    GetCurrentAuthUserResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+
+    ExchangeMobileAuthorizationCodeBody:
+      type: object
+      required: [code, code_verifier, redirect_uri, state]
+      properties:
+        code:
+          type: string
+          minLength: 1
+        code_verifier:
+          type: string
+          minLength: 1
+        redirect_uri:
+          type: string
+          minLength: 1
+        state:
+          type: string
+          minLength: 1
+        nonce:
+          type: string
+          minLength: 1
+
+    ExchangeMobileAuthorizationCodeResponse:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    LogoutMobileSessionResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+
+    RequestUploadUrlBody:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+
+    RequestUploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/RequestUploadUrlBody"

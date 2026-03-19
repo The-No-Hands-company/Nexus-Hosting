@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, nodesTable } from "@workspace/db";
+import { generateKeyPair } from "../lib/federation";
 import {
   CreateNodeBody,
   UpdateNodeBody,
@@ -27,10 +28,14 @@ router.post("/nodes", async (req, res): Promise<void> => {
     return;
   }
 
+  const keyPair = parsed.data.publicKey ? null : generateKeyPair();
+
   const [node] = await db
     .insert(nodesTable)
     .values({
       ...parsed.data,
+      publicKey: parsed.data.publicKey ?? keyPair?.publicKey,
+      privateKey: keyPair?.privateKey,
       lastSeenAt: new Date(),
     })
     .returning();

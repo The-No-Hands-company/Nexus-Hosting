@@ -11,6 +11,9 @@ import NodeList from "@/pages/nodes/NodeList";
 import NodeDetail from "@/pages/nodes/NodeDetail";
 import SiteList from "@/pages/sites/SiteList";
 import SiteDetail from "@/pages/sites/SiteDetail";
+import MySites from "@/pages/MySites";
+import DeploySite from "@/pages/DeploySite";
+import Federation from "@/pages/Federation";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +33,9 @@ function Router() {
         <Route path="/nodes/:id" component={NodeDetail} />
         <Route path="/sites" component={SiteList} />
         <Route path="/sites/:id" component={SiteDetail} />
+        <Route path="/my-sites" component={MySites} />
+        <Route path="/deploy/:id" component={DeploySite} />
+        <Route path="/federation" component={Federation} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
@@ -40,10 +46,10 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
   );

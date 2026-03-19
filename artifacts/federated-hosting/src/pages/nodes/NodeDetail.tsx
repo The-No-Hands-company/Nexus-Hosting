@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatGb, formatPercent, formatBytes } from "@/lib/utils";
-import { ArrowLeft, Server, Activity, HardDrive, MapPin, Globe, Clock, User, Shield, Edit, Trash2, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Server, Activity, HardDrive, MapPin, Globe, Clock, User, Shield, Edit, Trash2, ShieldAlert, Key, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -13,7 +13,7 @@ import { NodeForm } from "@/components/forms/NodeForm";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { getListNodesQueryKey } from "@workspace/api-client-react";
+import { getListNodesQueryKey, getGetNodeQueryKey } from "@workspace/api-client-react";
 
 export default function NodeDetail() {
   const { id } = useParams();
@@ -22,6 +22,22 @@ export default function NodeDetail() {
   const queryClient = useQueryClient();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [generatingKeys, setGeneratingKeys] = useState(false);
+
+  const generateKeys = async () => {
+    setGeneratingKeys(true);
+    try {
+      const res = await fetch(`/api/nodes/${nodeId}/generate-keys`, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      await queryClient.invalidateQueries({ queryKey: getGetNodeQueryKey(nodeId) });
+      toast({ title: "Keys Generated", description: "Ed25519 key pair created. This node can now sign federation messages." });
+    } catch (err: any) {
+      toast({ title: "Key Generation Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setGeneratingKeys(false);
+    }
+  };
   
   const nodeId = parseInt(id || "0", 10);
   const { data: node, isLoading, error } = useGetNode(nodeId);
@@ -74,6 +90,16 @@ export default function NodeDetail() {
         </div>
         
         <div className="flex gap-3 w-full lg:w-auto mt-4 lg:mt-0">
+          <Button
+            variant="outline"
+            className="flex-1 lg:flex-none border-primary/20 text-primary hover:bg-primary/10"
+            onClick={generateKeys}
+            disabled={generatingKeys}
+          >
+            {generatingKeys ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Key className="w-4 h-4 mr-2" />}
+            {node.publicKey ? "Rotate Keys" : "Generate Keys"}
+          </Button>
+
           <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" className="flex-1 lg:flex-none border-white/10 hover:bg-white/5">

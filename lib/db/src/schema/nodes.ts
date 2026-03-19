@@ -18,8 +18,11 @@ export const nodesTable = pgTable("nodes", {
   uptimePercent: real("uptime_percent").notNull().default(100),
   siteCount: integer("site_count").notNull().default(0),
   publicKey: text("public_key"),
+  privateKey: text("private_key"),
+  isLocalNode: integer("is_local_node").default(0),
   joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
 });
 
 export const insertNodeSchema = createInsertSchema(nodesTable).omit({

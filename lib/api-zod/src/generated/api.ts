@@ -8,7 +8,6 @@
 import * as zod from "zod";
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -16,7 +15,6 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * Returns aggregate stats for the entire federation
  * @summary Get federation statistics
  */
 export const GetFederationStatsResponse = zod.object({
@@ -30,7 +28,6 @@ export const GetFederationStatsResponse = zod.object({
 });
 
 /**
- * Returns all federation nodes
  * @summary List all nodes
  */
 export const ListNodesResponseItem = zod.object({
@@ -137,7 +134,6 @@ export const DeleteNodeParams = zod.object({
 });
 
 /**
- * Returns all sites registered in the federation
  * @summary List all sites
  */
 export const ListSitesResponseItem = zod.object({
@@ -149,6 +145,7 @@ export const ListSitesResponseItem = zod.object({
   siteType: zod.enum(["static", "dynamic", "blog", "portfolio", "other"]),
   ownerName: zod.string(),
   ownerEmail: zod.string(),
+  ownerId: zod.string().nullable(),
   primaryNodeId: zod.number().nullable(),
   primaryNodeDomain: zod.string().nullable(),
   replicaCount: zod.number(),
@@ -188,6 +185,7 @@ export const GetSiteResponse = zod.object({
   siteType: zod.enum(["static", "dynamic", "blog", "portfolio", "other"]),
   ownerName: zod.string(),
   ownerEmail: zod.string(),
+  ownerId: zod.string().nullable(),
   primaryNodeId: zod.number().nullable(),
   primaryNodeDomain: zod.string().nullable(),
   replicaCount: zod.number(),
@@ -224,6 +222,7 @@ export const UpdateSiteResponse = zod.object({
   siteType: zod.enum(["static", "dynamic", "blog", "portfolio", "other"]),
   ownerName: zod.string(),
   ownerEmail: zod.string(),
+  ownerId: zod.string().nullable(),
   primaryNodeId: zod.number().nullable(),
   primaryNodeDomain: zod.string().nullable(),
   replicaCount: zod.number(),
@@ -238,4 +237,205 @@ export const UpdateSiteResponse = zod.object({
  */
 export const DeleteSiteParams = zod.object({
   id: zod.coerce.number(),
+});
+
+/**
+ * @summary Get presigned URL to upload a site file
+ */
+export const GetSiteFileUploadUrlParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetSiteFileUploadUrlBody = zod.object({
+  filePath: zod
+    .string()
+    .describe(
+      "Relative path within the site (e.g. index.html, css\/style.css)",
+    ),
+  contentType: zod.string(),
+  size: zod.number(),
+});
+
+export const GetSiteFileUploadUrlResponse = zod.object({
+  uploadUrl: zod.string(),
+  objectPath: zod.string(),
+  filePath: zod.string(),
+});
+
+/**
+ * @summary Register an uploaded file for a site
+ */
+export const RegisterSiteFileParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RegisterSiteFileBody = zod.object({
+  filePath: zod.string(),
+  objectPath: zod.string(),
+  contentType: zod.string(),
+  sizeBytes: zod.number(),
+});
+
+/**
+ * @summary List files for a site
+ */
+export const ListSiteFilesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListSiteFilesResponseItem = zod.object({
+  id: zod.number(),
+  siteId: zod.number(),
+  deploymentId: zod.number().nullish(),
+  filePath: zod.string(),
+  objectPath: zod.string(),
+  contentType: zod.string(),
+  sizeBytes: zod.number(),
+  createdAt: zod.string(),
+});
+export const ListSiteFilesResponse = zod.array(ListSiteFilesResponseItem);
+
+/**
+ * @summary Activate a deployment for a site
+ */
+export const DeploySiteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeploySiteResponse = zod.object({
+  id: zod.number(),
+  siteId: zod.number(),
+  version: zod.number(),
+  status: zod.enum(["pending", "active", "failed", "rolled_back"]),
+  deployedBy: zod.string().nullish(),
+  fileCount: zod.number(),
+  totalSizeMb: zod.number(),
+  deployedAt: zod.string(),
+});
+
+/**
+ * @summary List deployments for a site
+ */
+export const ListSiteDeploymentsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListSiteDeploymentsResponseItem = zod.object({
+  id: zod.number(),
+  siteId: zod.number(),
+  version: zod.number(),
+  status: zod.enum(["pending", "active", "failed", "rolled_back"]),
+  deployedBy: zod.string().nullish(),
+  fileCount: zod.number(),
+  totalSizeMb: zod.number(),
+  deployedAt: zod.string(),
+});
+export const ListSiteDeploymentsResponse = zod.array(
+  ListSiteDeploymentsResponseItem,
+);
+
+/**
+ * @summary Get the currently authenticated user
+ */
+export const GetCurrentAuthUserHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — Bearer <sid>"),
+});
+
+export const GetCurrentAuthUserResponse = zod.object({
+  user: zod.union([
+    zod.object({
+      id: zod.string(),
+      email: zod.string().nullable(),
+      firstName: zod.string().nullable(),
+      lastName: zod.string().nullable(),
+      profileImageUrl: zod.string().nullable(),
+    }),
+    zod.null(),
+  ]),
+});
+
+/**
+ * @summary Start the browser OIDC login flow
+ */
+export const BeginBrowserLoginQueryParams = zod.object({
+  returnTo: zod.coerce.string().optional(),
+});
+
+/**
+ * @summary Clear session and begin OIDC logout
+ */
+export const LogoutBrowserSessionHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — Bearer <sid>"),
+});
+
+/**
+ * @summary Exchange a mobile OIDC code for a session token
+ */
+
+export const ExchangeMobileAuthorizationCodeBody = zod.object({
+  code: zod.string().min(1),
+  code_verifier: zod.string().min(1),
+  redirect_uri: zod.string().min(1),
+  state: zod.string().min(1),
+  nonce: zod.string().min(1).optional(),
+});
+
+export const ExchangeMobileAuthorizationCodeResponse = zod.object({
+  token: zod.string(),
+});
+
+/**
+ * @summary Delete a mobile session token
+ */
+export const LogoutMobileSessionHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — Bearer <sid>"),
+});
+
+export const LogoutMobileSessionResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Request a presigned URL for file upload
+ */
+
+export const RequestUploadUrlBody = zod.object({
+  name: zod.string().min(1),
+  size: zod.number().min(1),
+  contentType: zod.string().min(1),
+});
+
+export const RequestUploadUrlResponse = zod.object({
+  uploadURL: zod.string(),
+  objectPath: zod.string(),
+  metadata: zod
+    .object({
+      name: zod.string().min(1),
+      size: zod.number().min(1),
+      contentType: zod.string().min(1),
+    })
+    .optional(),
+});
+
+/**
+ * @summary Serve a public asset
+ */
+export const GetPublicObjectParams = zod.object({
+  filePath: zod.coerce.string(),
+});
+
+/**
+ * @summary Serve an object entity
+ */
+export const GetStorageObjectParams = zod.object({
+  objectPath: zod.coerce.string(),
 });
