@@ -16,12 +16,13 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
-## GitHub Push Note
-The GitHub OAuth integration requires a paid Replit plan. To push to GitHub, use a Personal Access Token (PAT) stored as the secret `GITHUB_TOKEN`. Then run:
+## GitHub
+Repository: https://github.com/The-No-Hands-company/Federated-Hosting
+To push future changes from the Shell tab:
 ```
-git remote add origin https://<username>:$GITHUB_TOKEN@github.com/The-No-Hands-company/Federated-Hosting.git
-git push -u origin master
+git push github master:main
 ```
+Token stored as secret: `GITHUB_PERSONAL_ACCESS_TOKEN`
 
 ## Project: Federated Hosting
 
