@@ -2,26 +2,16 @@ import app from "./app";
 import { db, nodesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { generateKeyPair } from "./lib/federation";
+import logger from "./lib/logger";
+import http from "http";
 
 const rawPort = process.env["PORT"];
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
+if (!rawPort) throw new Error("PORT environment variable is required but was not provided.");
 const port = Number(rawPort);
+if (Number.isNaN(port) || port <= 0) throw new Error(`Invalid PORT value: "${rawPort}"`);
 
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-async function ensureLocalNode() {
-  const [existing] = await db
-    .select()
-    .from(nodesTable)
-    .where(eq(nodesTable.isLocalNode, 1));
+async function ensureLocalNode(): Promise<void> {
+  const [existing] = await db.select().from(nodesTable).where(eq(nodesTable.isLocalNode, 1));
 
   if (!existing) {
     const domain = process.env.REPLIT_DEV_DOMAIN ?? `localhost:${port}`;
@@ -29,37 +19,75 @@ async function ensureLocalNode() {
     const [created] = await db
       .insert(nodesTable)
       .values({
-        name: "Primary Node",
+        name: process.env.NODE_NAME ?? "Primary Node",
         domain,
         region: process.env.NODE_REGION ?? "Replit-Cloud",
         operatorName: process.env.OPERATOR_NAME ?? "Node Operator",
         operatorEmail: process.env.OPERATOR_EMAIL ?? "admin@example.com",
-        storageCapacityGb: 100,
-        bandwidthCapacityGb: 1000,
+        storageCapacityGb: Number(process.env.STORAGE_CAPACITY_GB ?? 100),
+        bandwidthCapacityGb: Number(process.env.BANDWIDTH_CAPACITY_GB ?? 1000),
         publicKey,
         privateKey,
         isLocalNode: 1,
       })
       .returning();
-    console.log(`[federation] Local node created: ${created.domain} (id=${created.id})`);
+    logger.info({ nodeId: created.id, domain: created.domain }, "[federation] Local node created");
   } else if (!existing.publicKey || !existing.privateKey) {
     const { publicKey, privateKey } = generateKeyPair();
     await db.update(nodesTable).set({ publicKey, privateKey }).where(eq(nodesTable.id, existing.id));
-    console.log(`[federation] Ed25519 key pair generated for local node: ${existing.domain}`);
+    logger.info({ nodeId: existing.id }, "[federation] Ed25519 key pair generated for local node");
   } else {
-    console.log(`[federation] Local node: ${existing.domain} (id=${existing.id})`);
+    logger.info({ nodeId: existing.id, domain: existing.domain }, "[federation] Local node ready");
   }
 }
 
+function gracefulShutdown(server: http.Server, signal: string): void {
+  logger.info({ signal }, "Shutdown signal received — draining connections");
+
+  const forceExitTimer = setTimeout(() => {
+    logger.error("Force exit after timeout");
+    process.exit(1);
+  }, 15_000);
+  forceExitTimer.unref();
+
+  server.close(async () => {
+    try {
+      const { pool } = await import("@workspace/db");
+      await pool.end();
+      logger.info("Database pool closed");
+    } catch (err) {
+      logger.error({ err }, "Error closing DB pool");
+    }
+    clearTimeout(forceExitTimer);
+    logger.info("Server shut down cleanly");
+    process.exit(0);
+  });
+}
+
+process.on("unhandledRejection", (reason) => {
+  logger.error({ reason }, "Unhandled promise rejection");
+});
+
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "Uncaught exception — shutting down");
+  process.exit(1);
+});
+
 ensureLocalNode()
   .then(() => {
-    app.listen(port, () => {
-      console.log(`Server listening on port ${port}`);
+    const server = http.createServer(app);
+
+    server.listen(port, () => {
+      logger.info({ port, env: process.env.NODE_ENV ?? "development" }, "Server listening");
     });
+
+    process.on("SIGTERM", () => gracefulShutdown(server, "SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown(server, "SIGINT"));
   })
   .catch((err) => {
-    console.error("[federation] Failed to initialize local node:", err);
-    app.listen(port, () => {
-      console.log(`Server listening on port ${port}`);
+    logger.error({ err }, "Failed to initialize — starting without local node");
+    const server = http.createServer(app);
+    server.listen(port, () => {
+      logger.info({ port }, "Server listening (degraded mode)");
     });
   });

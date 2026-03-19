@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, real, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, integer, pgEnum, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -21,7 +21,11 @@ export const sitesTable = pgTable("sites", {
   monthlyBandwidthGb: real("monthly_bandwidth_gb").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (t) => [
+  index("sites_owner_idx").on(t.ownerId),
+  index("sites_status_idx").on(t.status),
+  index("sites_primary_node_idx").on(t.primaryNodeId),
+]);
 
 export const insertSiteSchema = createInsertSchema(sitesTable).omit({
   id: true,

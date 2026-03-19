@@ -162,6 +162,65 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
 - `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
 
+## Production Hardening (Phase 4) ✅
+
+### Security middleware stack (app.ts)
+- **helmet** — CSP, HSTS, X-Frame-Options, X-Content-Type-Options
+- **Rate limiting** — global 200 req/min; auth/upload endpoints 20 req/min (using `express-rate-limit`)
+- **Compression** — gzip via `compression`
+- **Body limits** — 10 MB JSON, 1 MB URL-encoded
+- **X-Request-ID** — every request gets a unique UUID traceable through logs
+
+### Structured logging (lib/logger.ts)
+- **pino** JSON logging in production, pretty-printed in development
+- **pino-http** request logging with method, URL, status, response time
+- **Redaction** — `privateKey` and `password` fields never appear in logs
+- **devDep**: `pino-pretty` for readable local output
+
+### Error handling (lib/errors.ts + middleware/errorHandler.ts)
+- **AppError** — typed error class with `statusCode`, `code`, `isOperational`
+- **asyncHandler** — wraps async route handlers, eliminates try/catch boilerplate
+- **globalErrorHandler** — structured JSON error responses, no stack traces in prod
+- **404 handler** — fallback for unmatched routes
+
+### Pagination (lib/pagination.ts)
+- All list endpoints return `{ data: [...], meta: { total, page, limit, totalPages, hasNextPage, hasPrevPage } }`
+- Endpoints: `GET /api/nodes`, `GET /api/sites`, `GET /api/federation/peers`, `GET /api/federation/events`
+- Query params: `?page=1&limit=20`
+
+### DB indexes (schema inline)
+- `sites`: `ownerId`, `status`, `primaryNodeId` indexes
+- `nodes`: `status`, `isLocalNode` indexes
+- `site_deployments`: `siteId`, `status` indexes
+- `site_files`: `siteId`, `siteId+filePath` (composite), `deploymentId` indexes
+- `federation_events`: `eventType`, `fromNodeDomain`, `createdAt` indexes
+
+### Deploy safety
+- Full DB transaction wrapping deployment creation + file assignment + site update
+- `Promise.allSettled` for peer replication (never fails the deploy if peers are down)
+- File path sanitization (prevents directory traversal)
+- 50 MB per-file limit, 500 MB per-deployment limit
+- Allowed content types whitelist
+
+### Graceful shutdown (index.ts)
+- `SIGTERM` / `SIGINT` — drains in-flight requests, closes DB pool cleanly
+- `unhandledRejection` + `uncaughtException` handlers
+
+### Frontend error handling (App.tsx + ErrorBoundary.tsx)
+- `ErrorBoundary` wraps all routes — shows friendly error UI with "Try Again"
+- `QueryCache` + `MutationCache` global error handlers — auto-redirect to login on 401
+- Exponential retry backoff; no retries on 4xx errors
+
+### New files
+| File | Purpose |
+|------|---------|
+| `artifacts/api-server/src/lib/errors.ts` | AppError class + asyncHandler wrapper |
+| `artifacts/api-server/src/lib/logger.ts` | Pino logger with redaction |
+| `artifacts/api-server/src/lib/pagination.ts` | Pagination utilities |
+| `artifacts/api-server/src/middleware/errorHandler.ts` | Global error + 404 handlers |
+| `artifacts/api-server/src/middleware/rateLimiter.ts` | Rate limiter instances |
+| `artifacts/federated-hosting/src/components/ErrorBoundary.tsx` | React error boundary |
+
 ## Key Notes
 
 - **Auth**: `useAuth()` from `@workspace/replit-auth-web` — no AuthProvider needed. Routes: `/api/login`, `/api/callback`, `/api/logout`, `/api/auth/user`
@@ -170,3 +229,5 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - **pnpm overrides**: root package.json has react 19.1.0 override for Uppy compatibility
 - **Local node**: On startup, `ensureLocalNode()` creates node record with Ed25519 keys if none exists; manually update `is_local_node=1` if needed
 - **DB push**: `pnpm --filter @workspace/db run push` to sync schema changes
+- **Health endpoints**: `GET /api/health` (full), `/api/health/live` (liveness), `/api/health/ready` (readiness)
+- **Pagination**: All list endpoints now return `{ data, meta }` — frontend must handle this shape

@@ -1,22 +1,20 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, nodesTable, siteDeploymentsTable, siteFilesTable, sitesTable, federationEventsTable } from "@workspace/db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, count } from "drizzle-orm";
 import { generateKeyPair, signMessage, verifySignature, createFederationChallenge, stripPemHeaders } from "../lib/federation";
 import { serializeDates } from "../lib/serialize";
+import { asyncHandler, AppError } from "../lib/errors";
+import { federationLimiter } from "../middleware/rateLimiter";
+import { parsePagination, buildPaginatedResponse } from "../lib/pagination";
+import logger from "../lib/logger";
 
 const router: IRouter = Router();
-
 const PROTOCOL_VERSION = "fedhost/1.0";
 
-router.get("/federation/meta", async (_req: Request, res: Response) => {
-  const [localNode] = await db
-    .select()
-    .from(nodesTable)
-    .where(eq(nodesTable.isLocalNode, 1));
-
-  const [nodeCount] = await db.select().from(nodesTable);
+router.get("/federation/meta", asyncHandler(async (_req, res) => {
+  const [localNode] = await db.select().from(nodesTable).where(eq(nodesTable.isLocalNode, 1));
   const allNodes = await db.select().from(nodesTable);
-  const allDeployments = await db.select().from(siteDeploymentsTable).where(eq(siteDeploymentsTable.status, "active"));
+  const activeDeployments = await db.select().from(siteDeploymentsTable).where(eq(siteDeploymentsTable.status, "active"));
 
   res.json({
     protocol: PROTOCOL_VERSION,
@@ -25,18 +23,17 @@ router.get("/federation/meta", async (_req: Request, res: Response) => {
     region: localNode?.region ?? "unknown",
     publicKey: localNode?.publicKey ? stripPemHeaders(localNode.publicKey) : null,
     nodeCount: allNodes.length,
-    activeSites: allDeployments.length,
+    activeSites: activeDeployments.length,
     joinedAt: localNode?.joinedAt ?? new Date().toISOString(),
-    capabilities: ["site-hosting", "node-federation", "key-verification"],
+    capabilities: ["site-hosting", "node-federation", "key-verification", "site-replication"],
   });
-});
+}));
 
-router.post("/federation/ping", async (req: Request, res: Response) => {
+router.post("/federation/ping", federationLimiter, asyncHandler(async (req, res) => {
   const { nodeDomain, challenge, signature, timestamp } = req.body;
 
   if (!nodeDomain || !challenge || !signature) {
-    res.status(400).json({ error: "Missing required fields: nodeDomain, challenge, signature" });
-    return;
+    throw AppError.badRequest("Missing required fields: nodeDomain, challenge, signature");
   }
 
   const [remoteNode] = await db
@@ -44,9 +41,8 @@ router.post("/federation/ping", async (req: Request, res: Response) => {
     .from(nodesTable)
     .where(eq(nodesTable.domain, nodeDomain));
 
-  if (!remoteNode || !remoteNode.publicKey) {
-    res.status(404).json({ error: "Unknown node or node has no public key" });
-    return;
+  if (!remoteNode?.publicKey) {
+    throw AppError.notFound("Unknown node or node has no public key");
   }
 
   const message = `${nodeDomain}:${challenge}:${timestamp ?? ""}`;
@@ -60,8 +56,8 @@ router.post("/federation/ping", async (req: Request, res: Response) => {
   });
 
   if (!valid) {
-    res.status(401).json({ error: "Invalid signature — node identity could not be verified" });
-    return;
+    logger.warn({ nodeDomain }, "Federation ping rejected — invalid signature");
+    throw AppError.unauthorized("Invalid signature — node identity could not be verified", "INVALID_SIGNATURE");
   }
 
   await db
@@ -69,26 +65,17 @@ router.post("/federation/ping", async (req: Request, res: Response) => {
     .set({ lastSeenAt: new Date(), verifiedAt: new Date(), status: "active" })
     .where(eq(nodesTable.domain, nodeDomain));
 
-  const responseChallenge = createFederationChallenge();
-  res.json({ verified: true, protocol: PROTOCOL_VERSION, challenge: responseChallenge });
-});
+  logger.info({ nodeDomain }, "Federation ping verified");
+  res.json({ verified: true, protocol: PROTOCOL_VERSION, challenge: createFederationChallenge() });
+}));
 
-router.post("/federation/handshake", async (req: Request, res: Response) => {
+router.post("/federation/handshake", federationLimiter, asyncHandler(async (req, res) => {
   const { targetNodeUrl } = req.body;
+  if (!targetNodeUrl) throw AppError.badRequest("Missing targetNodeUrl");
 
-  if (!targetNodeUrl) {
-    res.status(400).json({ error: "Missing targetNodeUrl" });
-    return;
-  }
-
-  const [localNode] = await db
-    .select()
-    .from(nodesTable)
-    .where(eq(nodesTable.isLocalNode, 1));
-
+  const [localNode] = await db.select().from(nodesTable).where(eq(nodesTable.isLocalNode, 1));
   if (!localNode?.privateKey || !localNode?.publicKey) {
-    res.status(500).json({ error: "Local node has no key pair. Generate keys first." });
-    return;
+    throw AppError.internal("Local node has no key pair. Generate keys first.");
   }
 
   const challenge = createFederationChallenge();
@@ -96,28 +83,21 @@ router.post("/federation/handshake", async (req: Request, res: Response) => {
   const message = `${localNode.domain}:${challenge}:${timestamp}`;
   const signature = signMessage(localNode.privateKey, message);
 
-  let discoveryData: any = null;
-  let pingResult: any = null;
+  let discoveryData: Record<string, unknown> | null = null;
+  let pingResult: Record<string, unknown> | null = null;
   let error: string | null = null;
 
   try {
     const discoveryRes = await fetch(`${targetNodeUrl}/.well-known/federation`, {
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(10_000),
     });
-    if (discoveryRes.ok) {
-      discoveryData = await discoveryRes.json();
-    }
+    if (discoveryRes.ok) discoveryData = await discoveryRes.json();
 
-    const pingRes = await fetch(`${targetNodeUrl}/api/federation/ping`, { // remote node may use /api prefix
+    const pingRes = await fetch(`${targetNodeUrl}/api/federation/ping`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nodeDomain: localNode.domain,
-        challenge,
-        signature,
-        timestamp,
-      }),
-      signal: AbortSignal.timeout(10000),
+      body: JSON.stringify({ nodeDomain: localNode.domain, challenge, signature, timestamp }),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (pingRes.ok) {
@@ -137,112 +117,103 @@ router.post("/federation/handshake", async (req: Request, res: Response) => {
     verified: pingResult ? 1 : 0,
   });
 
-  res.json({
-    success: !error,
-    targetUrl: targetNodeUrl,
-    discoveryData,
-    pingResult,
-    error,
-  });
-});
+  logger.info({ targetNodeUrl, success: !error }, "Federation handshake completed");
+  res.json({ success: !error, targetUrl: targetNodeUrl, discoveryData, pingResult, error });
+}));
 
-router.post("/nodes/:id/generate-keys", async (req: Request, res: Response) => {
+router.post("/nodes/:id/generate-keys", asyncHandler(async (req, res) => {
   const nodeId = parseInt(req.params.id, 10);
-  const [node] = await db.select().from(nodesTable).where(eq(nodesTable.id, nodeId));
+  if (Number.isNaN(nodeId)) throw AppError.badRequest("Invalid node ID");
 
-  if (!node) {
-    res.status(404).json({ error: "Node not found" });
-    return;
-  }
+  const [node] = await db.select().from(nodesTable).where(eq(nodesTable.id, nodeId));
+  if (!node) throw AppError.notFound(`Node ${nodeId} not found`);
 
   const { publicKey, privateKey } = generateKeyPair();
+  await db.update(nodesTable).set({ publicKey, privateKey }).where(eq(nodesTable.id, nodeId));
 
-  await db
-    .update(nodesTable)
-    .set({ publicKey, privateKey })
-    .where(eq(nodesTable.id, nodeId));
+  logger.info({ nodeId }, "Ed25519 key pair generated for node");
+  res.json({ nodeId, publicKey, message: "Ed25519 key pair generated. Private key stored securely." });
+}));
 
-  res.json({
-    nodeId,
-    publicKey,
-    message: "Ed25519 key pair generated. Private key stored securely.",
-  });
-});
+router.get("/federation/peers", asyncHandler(async (req, res) => {
+  const { limit, offset, page } = parsePagination(req);
 
-router.get("/federation/peers", async (_req: Request, res: Response) => {
-  const peers = await db
-    .select()
+  const [{ total }] = await db
+    .select({ total: count() })
     .from(nodesTable)
     .where(eq(nodesTable.isLocalNode, 0));
 
-  const safePeers = peers.map((p) => ({
-    id: p.id,
-    name: p.name,
-    domain: p.domain,
-    status: p.status,
-    region: p.region,
-    publicKey: p.publicKey,
-    verifiedAt: p.verifiedAt,
-    lastSeenAt: p.lastSeenAt,
-  }));
+  const peers = await db
+    .select({
+      id: nodesTable.id, name: nodesTable.name, domain: nodesTable.domain,
+      status: nodesTable.status, region: nodesTable.region, publicKey: nodesTable.publicKey,
+      verifiedAt: nodesTable.verifiedAt, lastSeenAt: nodesTable.lastSeenAt,
+    })
+    .from(nodesTable)
+    .where(eq(nodesTable.isLocalNode, 0))
+    .orderBy(nodesTable.lastSeenAt)
+    .limit(limit)
+    .offset(offset);
 
-  res.json(serializeDates(safePeers));
-});
+  res.json(buildPaginatedResponse(serializeDates(peers), Number(total), { limit, offset, page }));
+}));
 
-router.get("/federation/events", async (_req: Request, res: Response) => {
+router.get("/federation/events", asyncHandler(async (req, res) => {
+  const { limit, offset, page } = parsePagination(req);
+
+  const [{ total }] = await db.select({ total: count() }).from(federationEventsTable);
+
   const events = await db
     .select()
     .from(federationEventsTable)
     .orderBy(desc(federationEventsTable.createdAt))
-    .limit(100);
+    .limit(limit)
+    .offset(offset);
 
-  res.json(serializeDates(events));
-});
+  res.json(buildPaginatedResponse(serializeDates(events), Number(total), { limit, offset, page }));
+}));
 
-router.post("/federation/notify-sync", async (req: Request, res: Response) => {
+router.post("/federation/notify-sync", asyncHandler(async (req, res) => {
   const { siteId, deploymentId } = req.body;
-
-  if (!siteId || !deploymentId) {
-    res.status(400).json({ error: "Missing siteId or deploymentId" });
-    return;
-  }
+  if (!siteId || !deploymentId) throw AppError.badRequest("Missing siteId or deploymentId");
 
   const [site] = await db.select().from(sitesTable).where(eq(sitesTable.id, siteId));
-  if (!site) {
-    res.status(404).json({ error: "Site not found" });
-    return;
-  }
+  if (!site) throw AppError.notFound("Site not found");
 
   const activeNodes = await db
     .select()
     .from(nodesTable)
     .where(and(eq(nodesTable.status, "active"), eq(nodesTable.isLocalNode, 0)));
 
-  const results = [];
-  for (const node of activeNodes) {
-    try {
+  const results = await Promise.allSettled(
+    activeNodes.map(async (node) => {
       const targetUrl = node.domain.startsWith("http") ? node.domain : `https://${node.domain}`;
-      const res2 = await fetch(`${targetUrl}/api/federation/sync`, {
+      const syncRes = await fetch(`${targetUrl}/api/federation/sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ siteDomain: site.domain, deploymentId }),
         signal: AbortSignal.timeout(5000),
       });
-      results.push({ node: node.domain, success: res2.ok });
-
       await db.insert(federationEventsTable).values({
         eventType: "site_sync",
         fromNodeDomain: site.domain,
         toNodeDomain: node.domain,
         payload: JSON.stringify({ siteId, deploymentId }),
-        verified: res2.ok ? 1 : 0,
+        verified: syncRes.ok ? 1 : 0,
       });
-    } catch (err: any) {
-      results.push({ node: node.domain, success: false, error: err.message });
-    }
-  }
+      return { node: node.domain, success: syncRes.ok };
+    }),
+  );
 
-  res.json({ synced: results.filter((r) => r.success).length, total: activeNodes.length, results });
-});
+  const resolved = results.map((r, i) =>
+    r.status === "fulfilled" ? r.value : { node: activeNodes[i].domain, success: false, error: (r.reason as Error)?.message },
+  );
+
+  res.json({
+    synced: resolved.filter((r) => r.success).length,
+    total: activeNodes.length,
+    results: resolved,
+  });
+}));
 
 export default router;

@@ -18,6 +18,7 @@ import {
   ISSUER_URL,
   type SessionData,
 } from "../lib/auth";
+import { authLimiter } from "../middleware/rateLimiter";
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
 
@@ -90,7 +91,7 @@ router.get("/auth/user", (req: Request, res: Response) => {
   );
 });
 
-router.get("/login", async (req: Request, res: Response) => {
+router.get("/login", authLimiter, async (req: Request, res: Response) => {
   const config = await getOidcConfig();
   const callbackUrl = `${getOrigin(req)}/api/callback`;
 

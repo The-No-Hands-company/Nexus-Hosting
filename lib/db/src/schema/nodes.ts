@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, real, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, integer, pgEnum, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -23,7 +23,10 @@ export const nodesTable = pgTable("nodes", {
   joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
-});
+}, (t) => [
+  index("nodes_status_idx").on(t.status),
+  index("nodes_local_idx").on(t.isLocalNode),
+]);
 
 export const insertNodeSchema = createInsertSchema(nodesTable).omit({
   id: true,

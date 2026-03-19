@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
 
 export const federationEventTypeEnum = pgEnum("federation_event_type", [
   "handshake",
@@ -16,6 +16,10 @@ export const federationEventsTable = pgTable("federation_events", {
   payload: text("payload"),
   verified: integer("verified").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("federation_events_type_idx").on(t.eventType),
+  index("federation_events_from_idx").on(t.fromNodeDomain),
+  index("federation_events_created_idx").on(t.createdAt),
+]);
 
 export type FederationEvent = typeof federationEventsTable.$inferSelect;
