@@ -1,0 +1,136 @@
+version: "3.9"
+
+# ── Federated Hosting — self-hosted stack ──────────────────────────────────────
+#
+# Usage:
+#   cp .env.example .env          # fill in secrets
+#   docker compose up -d          # start everything
+#   docker compose logs -f app    # follow app logs
+#
+# The app will be available at http://localhost:8080
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-fedhost}
+      POSTGRES_USER:     ${POSTGRES_USER:-fedhost}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fedhost} -d ${POSTGRES_DB:-fedhost}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fedhost
+
+  # ── MinIO (S3-compatible object storage) ───────────────────────────────────
+  # Remove this block and point OBJECT_STORAGE_* at an external provider if you
+  # already have S3 / Cloudflare R2 / Backblaze B2 available.
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER:-fedhost}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO console
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fedhost
+
+  # ── DB migration job (runs once, then exits) ───────────────────────────────
+  migrate:
+    build:
+      context: .
+      target: deps          # only needs deps stage — no full build required
+    command: >
+      sh -c "pnpm --filter @workspace/db run push"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fedhost}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-fedhost}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - fedhost
+    restart: "no"
+
+  # ── API + frontend server ──────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+
+      # ── Database ───────────────────────────────────────────────────────────
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fedhost}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-fedhost}
+
+      # ── Object storage (MinIO — swap for S3/R2 as needed) ─────────────────
+      # When using MinIO locally, set these.  For external providers see docs.
+      OBJECT_STORAGE_ENDPOINT:    http://minio:9000
+      OBJECT_STORAGE_ACCESS_KEY:  ${MINIO_ROOT_USER:-fedhost}
+      OBJECT_STORAGE_SECRET_KEY:  ${MINIO_ROOT_PASSWORD}
+      OBJECT_STORAGE_BUCKET:      ${OBJECT_STORAGE_BUCKET:-fedhost-sites}
+      DEFAULT_OBJECT_STORAGE_BUCKET_ID: ${OBJECT_STORAGE_BUCKET:-fedhost-sites}
+      PRIVATE_OBJECT_DIR:         private
+      PUBLIC_OBJECT_SEARCH_PATHS: public
+
+      # ── Auth ──────────────────────────────────────────────────────────────
+      # Leave ISSUER_URL pointing at Replit OIDC, or replace with your own.
+      ISSUER_URL:  ${ISSUER_URL:-https://replit.com/oidc}
+      REPL_ID:     ${REPL_ID:-}
+
+      # ── Node identity ─────────────────────────────────────────────────────
+      NODE_NAME:            ${NODE_NAME:-My FedHost Node}
+      NODE_REGION:          ${NODE_REGION:-self-hosted}
+      OPERATOR_NAME:        ${OPERATOR_NAME:-Node Operator}
+      OPERATOR_EMAIL:       ${OPERATOR_EMAIL:-admin@example.com}
+      STORAGE_CAPACITY_GB:  ${STORAGE_CAPACITY_GB:-100}
+      BANDWIDTH_CAPACITY_GB: ${BANDWIDTH_CAPACITY_GB:-1000}
+
+      # Public domain/hostname where this node is reachable from other nodes.
+      REPLIT_DEV_DOMAIN: ${PUBLIC_DOMAIN:-}
+
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health/live || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - fedhost
+
+volumes:
+  db_data:
+  minio_data:
+
+networks:
+  fedhost:
+    driver: bridge

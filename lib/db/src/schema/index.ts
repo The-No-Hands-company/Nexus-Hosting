@@ -3,3 +3,6 @@ export * from "./nodes";
 export * from "./sites";
 export * from "./deployments";
 export * from "./federation";
+export * from "./analytics";
+export * from "./access";
+export * from "./domains";

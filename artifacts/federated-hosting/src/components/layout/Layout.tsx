@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio, BookMarked } from "lucide-react";
+import { Activity, LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio, BookMarked, Key, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,6 +25,8 @@ const NAV_ITEMS = [
 
 const AUTH_NAV_ITEMS = [
   { href: "/my-sites", label: "My Sites", icon: Upload },
+  { href: "/tokens",   label: "API Tokens", icon: Key },
+  { href: "/admin",    label: "Node Admin", icon: Shield },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {

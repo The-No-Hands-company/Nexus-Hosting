@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const siteStatusEnum = pgEnum("site_status", ["active", "suspended", "migrating"]);
 export const siteTypeEnum = pgEnum("site_type", ["static", "dynamic", "blog", "portfolio", "other"]);
+export const siteVisibilityEnum = pgEnum("site_visibility", ["public", "private", "password"]);
 
 export const sitesTable = pgTable("sites", {
   id: serial("id").primaryKey(),
@@ -21,6 +22,10 @@ export const sitesTable = pgTable("sites", {
   monthlyBandwidthGb: real("monthly_bandwidth_gb").notNull().default(0),
   hitCount: bigint("hit_count", { mode: "number" }).notNull().default(0),
   lastHitAt: timestamp("last_hit_at", { withTimezone: true }),
+  /** public | private | password */
+  visibility: siteVisibilityEnum("visibility").notNull().default("public"),
+  /** bcrypt hash — only set when visibility = 'password' */
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [

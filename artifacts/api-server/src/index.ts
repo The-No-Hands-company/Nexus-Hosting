@@ -3,6 +3,8 @@ import { db, nodesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { generateKeyPair } from "./lib/federation";
 import { startHealthMonitor } from "./lib/healthMonitor";
+import { startAnalyticsFlusher, stopAnalyticsFlusher } from "./lib/analyticsFlush";
+import { startGossipPusher, stopGossipPusher } from "./routes/gossip";
 import { seedBundledSites } from "./lib/seedBundledSites";
 import logger from "./lib/logger";
 import http from "http";
@@ -54,6 +56,8 @@ function gracefulShutdown(server: http.Server, signal: string): void {
 
   server.close(async () => {
     try {
+      stopAnalyticsFlusher();
+      stopGossipPusher();
       const { pool } = await import("@workspace/db");
       await pool.end();
       logger.info("Database pool closed");
@@ -84,6 +88,8 @@ ensureLocalNode()
     });
 
     startHealthMonitor();
+    startAnalyticsFlusher();
+    startGossipPusher();
     seedBundledSites();
 
     process.on("SIGTERM", () => gracefulShutdown(server, "SIGTERM"));

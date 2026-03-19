@@ -1,0 +1,183 @@
+import { Command } from "commander";
+import chalk from "chalk";
+import ora, { type Ora } from "ora";
+import path from "path";
+import fs from "fs";
+import { glob } from "glob";
+import mime from "mime-types";
+import { apiFetch, apiUpload } from "../api.js";
+import { requireAuth } from "../config.js";
+
+interface Site {
+  id: number;
+  name: string;
+  domain: string;
+  status: string;
+}
+
+interface UploadUrlResponse {
+  uploadUrl: string;
+  objectPath: string;
+  filePath: string;
+}
+
+interface DeployResponse {
+  id: number;
+  version: number;
+  fileCount: number;
+  totalSizeMb: number;
+  replication: { peers: number; synced: number };
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+async function collectFiles(dir: string): Promise<Array<{ abs: string; rel: string }>> {
+  const patterns = ["**/*"];
+  const files = await glob(patterns, {
+    cwd: dir,
+    nodir: true,
+    ignore: ["node_modules/**", ".git/**", ".DS_Store", "**/.DS_Store"],
+    dot: false,
+  });
+  return files.map((f) => ({ abs: path.resolve(dir, f), rel: f }));
+}
+
+export const deployCommand = new Command("deploy")
+  .description("Upload a local directory and deploy it as a site")
+  .argument("<dir>", "Directory to deploy (must contain index.html)")
+  .requiredOption("-s, --site <id>", "Site ID to deploy to")
+  .option("--dry-run", "List files that would be uploaded without deploying")
+  .option("-c, --concurrency <n>", "Number of parallel uploads", "4")
+  .action(async (dir: string, opts: { site: string; dryRun?: boolean; concurrency: string }) => {
+    const absDir = path.resolve(process.cwd(), dir);
+    if (!fs.existsSync(absDir)) {
+      console.error(chalk.red(`Directory not found: ${absDir}`));
+      process.exit(1);
+    }
+
+    const siteId = parseInt(opts.site, 10);
+    if (Number.isNaN(siteId)) {
+      console.error(chalk.red("--site must be a numeric site ID"));
+      process.exit(1);
+    }
+
+    const concurrency = Math.max(1, Math.min(10, parseInt(opts.concurrency, 10)));
+
+    // Collect files
+    const collectSpinner = ora("Scanning files").start();
+    const files = await collectFiles(absDir);
+    collectSpinner.succeed(`Found ${chalk.bold(files.length)} files`);
+
+    if (files.length === 0) {
+      console.error(chalk.red("No files found in directory"));
+      process.exit(1);
+    }
+
+    const indexHtml = files.find((f) => f.rel === "index.html");
+    if (!indexHtml) {
+      console.warn(chalk.yellow("⚠ No index.html found — site may not serve correctly"));
+    }
+
+    const totalBytes = files.reduce((sum, f) => sum + fs.statSync(f.abs).size, 0);
+    console.log(chalk.dim(`  Total: ${formatBytes(totalBytes)}\n`));
+
+    if (opts.dryRun) {
+      console.log(chalk.cyan("Files that would be uploaded:"));
+      for (const f of files) {
+        const size = fs.statSync(f.abs).size;
+        console.log(`  ${chalk.white(f.rel)} ${chalk.dim(formatBytes(size))}`);
+      }
+      return;
+    }
+
+    // Upload files in parallel with concurrency limit
+    const uploadSpinner = ora(`Uploading files (concurrency: ${concurrency})`).start();
+    let uploaded = 0;
+    let failed = 0;
+
+    async function uploadFile(f: { abs: string; rel: string }): Promise<void> {
+      const fileBuffer = fs.readFileSync(f.abs);
+      const contentType = (mime.lookup(f.abs) || "application/octet-stream") as string;
+      const size = fileBuffer.length;
+
+      const { uploadUrl, objectPath } = await apiFetch<UploadUrlResponse>(
+        `/sites/${siteId}/files/upload-url`,
+        {
+          method: "POST",
+          body: JSON.stringify({ filePath: f.rel, contentType, size }),
+        },
+      );
+
+      await apiUpload(uploadUrl, fileBuffer, contentType);
+
+      await apiFetch(`/sites/${siteId}/files`, {
+        method: "POST",
+        body: JSON.stringify({ filePath: f.rel, objectPath, contentType, sizeBytes: size }),
+      });
+    }
+
+    // Chunked concurrency
+    for (let i = 0; i < files.length; i += concurrency) {
+      const chunk = files.slice(i, i + concurrency);
+      const results = await Promise.allSettled(chunk.map(uploadFile));
+      for (const [j, result] of results.entries()) {
+        if (result.status === "fulfilled") {
+          uploaded++;
+        } else {
+          failed++;
+          uploadSpinner.warn(
+            `Failed to upload ${chunk[j]?.rel}: ${(result.reason as Error).message}`,
+          );
+        }
+      }
+      uploadSpinner.text = `Uploading files … ${uploaded}/${files.length}`;
+    }
+
+    if (failed > 0) {
+      uploadSpinner.warn(`Uploaded ${uploaded}/${files.length} files (${failed} failed)`);
+    } else {
+      uploadSpinner.succeed(`Uploaded ${chalk.bold(uploaded)} files`);
+    }
+
+    if (uploaded === 0) {
+      console.error(chalk.red("All uploads failed — aborting deploy"));
+      process.exit(1);
+    }
+
+    // Trigger deploy
+    const deploySpinner = ora("Deploying…").start();
+    try {
+      const result = await apiFetch<DeployResponse>(`/sites/${siteId}/deploy`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+
+      deploySpinner.succeed(
+        chalk.green(`Deployed! `) +
+          chalk.dim(`v${result.version} · ${result.fileCount} files · ${result.totalSizeMb.toFixed(2)} MB`),
+      );
+
+      if (result.replication.peers > 0) {
+        const synced = result.replication.synced;
+        const total = result.replication.peers;
+        const icon = synced === total ? "✓" : "⚠";
+        console.log(
+          `  ${icon} Federation: ${chalk.bold(`${synced}/${total}`)} peers synced`,
+        );
+      }
+
+      // Fetch site domain for the success message
+      try {
+        const site = await apiFetch<Site>(`/sites/${siteId}`);
+        console.log();
+        console.log(chalk.bold("  🌐 Live at: ") + chalk.cyan(`https://${site.domain}`));
+      } catch { /* not critical */ }
+    } catch (err: any) {
+      deploySpinner.fail(chalk.red(`Deploy failed: ${err.message}`));
+      process.exit(1);
+    }
+  });

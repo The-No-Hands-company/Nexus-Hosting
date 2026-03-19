@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import { randomUUID } from "crypto";
 import { authMiddleware } from "./middlewares/authMiddleware";
+import { tokenAuthMiddleware } from "./middleware/tokenAuth";
 import { globalErrorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { globalLimiter, speedLimiter } from "./middleware/rateLimiter";
 import router from "./routes";
@@ -97,6 +98,9 @@ app.use(speedLimiter);
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
 app.use(authMiddleware);
+
+// ── Token-based auth (for CLI / API clients) ──────────────────────────────────
+app.use(tokenAuthMiddleware);
 
 // ── Phase 3: Host-header site routing ─────────────────────────────────────────
 app.use(hostRouter);

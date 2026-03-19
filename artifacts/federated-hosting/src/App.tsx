@@ -16,6 +16,9 @@ import MySites from "@/pages/MySites";
 import DeploySite from "@/pages/DeploySite";
 import Federation from "@/pages/Federation";
 import Directory from "@/pages/Directory";
+import SiteAnalytics from "@/pages/SiteAnalytics";
+import TokensPage from "@/pages/Tokens";
+import AdminPage from "@/pages/Admin";
 
 function onQueryError(error: unknown) {
   const err = error as { status?: number; message?: string };
@@ -58,6 +61,9 @@ function Router() {
           <Route path="/deploy/:id" component={DeploySite} />
           <Route path="/directory" component={Directory} />
           <Route path="/federation" component={Federation} />
+          <Route path="/analytics/:id" component={SiteAnalytics} />
+          <Route path="/tokens" component={TokensPage} />
+          <Route path="/admin" component={AdminPage} />
           <Route component={NotFound} />
         </Switch>
       </ErrorBoundary>
