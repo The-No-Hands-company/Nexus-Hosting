@@ -10,8 +10,8 @@ if (!token) {
 
 try {
   // Configure git user
-  execSync('git config user.email "replit-agent@replit.com"', { stdio: "inherit", cwd: "/home/runner/workspace" });
-  execSync('git config user.name "Replit Agent"', { stdio: "inherit", cwd: "/home/runner/workspace" });
+  execSync('git config user.email "erichakansson84@gmail.com"', { stdio: "inherit", cwd: "/home/runner/workspace" });
+  execSync('git config user.name "Zajfan"', { stdio: "inherit", cwd: "/home/runner/workspace" });
 
   // Remove existing github remote if it exists
   try {
