@@ -16,6 +16,26 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
+## Project: Federated Hosting
+
+A web platform for managing a federated web hosting network — inspired by the Matrix/Mastodon federation model but for hosting websites across independent nodes.
+
+### Features
+- **Dashboard** — federation-wide health overview with stats, network throughput chart, and live node status grid
+- **Federation Nodes** — browse, register, and manage hosting nodes; each node shows region, operator, capacity, uptime, site count, and status
+- **Hosted Sites** — browse and register websites across the federation; shows site type, status, primary node, replicas, and bandwidth
+- **Detail pages** — full details for individual nodes and sites
+- **Seed data** — 5 sample nodes across EU, NA, APAC regions and 7 sample sites
+
+### Stack additions
+- `artifacts/federated-hosting` — React + Vite frontend (at path `/`)
+- `lib/db/src/schema/nodes.ts` — nodes table with federation node data
+- `lib/db/src/schema/sites.ts` — sites table with hosted site data
+- `artifacts/api-server/src/routes/nodes.ts` — CRUD for nodes
+- `artifacts/api-server/src/routes/sites.ts` — CRUD for sites
+- `artifacts/api-server/src/routes/stats.ts` — aggregate federation stats
+- `scripts/src/seed.ts` — seed script for sample data
+
 ## Structure
 
 ```text

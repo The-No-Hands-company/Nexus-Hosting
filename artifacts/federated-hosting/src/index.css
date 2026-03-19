@@ -1,0 +1,161 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover-border: hsl(var(--popover-border));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  --color-status-active: hsl(var(--status-active));
+  --color-status-maintenance: hsl(var(--status-maintenance));
+  --color-status-inactive: hsl(var(--status-inactive));
+  --color-status-suspended: hsl(var(--status-suspended));
+  --color-status-migrating: hsl(var(--status-migrating));
+
+  --font-sans: 'Manrope', sans-serif;
+  --font-display: 'Syne', sans-serif;
+  --font-mono: 'Fira Code', monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* DARK MODE BY DEFAULT FOR TECH/DEVOPS VIBE */
+  --background: 230 20% 6%;
+  --foreground: 210 40% 98%;
+  
+  --border: 230 15% 15%;
+  --input: 230 15% 15%;
+  --ring: 185 100% 50%; /* Cyan ring */
+
+  --card: 230 18% 9%;
+  --card-foreground: 210 40% 98%;
+  --card-border: 230 15% 15%;
+
+  --popover: 230 20% 8%;
+  --popover-foreground: 210 40% 98%;
+  --popover-border: 230 15% 15%;
+
+  /* Cyan primary */
+  --primary: 185 100% 45%;
+  --primary-foreground: 230 30% 10%;
+
+  /* Purple secondary */
+  --secondary: 270 70% 60%;
+  --secondary-foreground: 210 40% 98%;
+
+  --muted: 230 15% 15%;
+  --muted-foreground: 215 20% 65%;
+
+  --accent: 230 20% 12%;
+  --accent-foreground: 210 40% 98%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+
+  --sidebar: 230 22% 5%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-border: 230 15% 12%;
+  --sidebar-primary: 185 100% 45%;
+  --sidebar-primary-foreground: 230 30% 10%;
+  --sidebar-accent: 230 15% 12%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-ring: 185 100% 50%;
+
+  /* Custom Status Colors */
+  --status-active: 150 100% 40%;
+  --status-maintenance: 45 100% 50%;
+  --status-inactive: 220 10% 40%;
+  --status-suspended: 0 84% 60%;
+  --status-migrating: 210 100% 60%;
+
+  --radius: 0.75rem; 
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    background-image: 
+      radial-gradient(circle at 15% 50%, rgba(0, 229, 255, 0.03), transparent 25%),
+      radial-gradient(circle at 85% 30%, rgba(153, 51, 255, 0.03), transparent 25%);
+    background-attachment: fixed;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-card/60 backdrop-blur-md border border-white/5 shadow-xl;
+  }
+  
+  .tech-glow {
+    box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.3);
+  }
+  
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary;
+  }
+
+  /* Custom scrollbar for webkit */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}

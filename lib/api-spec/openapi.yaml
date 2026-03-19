@@ -1,15 +1,20 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Federated Hosting API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: nodes
+    description: Federation node operations
+  - name: sites
+    description: Hosted site operations
+  - name: stats
+    description: Federation statistics
 paths:
   /healthz:
     get:
@@ -24,6 +29,245 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /stats:
+    get:
+      operationId: getFederationStats
+      tags: [stats]
+      summary: Get federation statistics
+      description: Returns aggregate stats for the entire federation
+      responses:
+        "200":
+          description: Federation statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FederationStats"
+
+  /nodes:
+    get:
+      operationId: listNodes
+      tags: [nodes]
+      summary: List all nodes
+      description: Returns all federation nodes
+      responses:
+        "200":
+          description: List of nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Node"
+    post:
+      operationId: createNode
+      tags: [nodes]
+      summary: Register a new node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNodeBody"
+      responses:
+        "201":
+          description: Created node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /nodes/{id}:
+    get:
+      operationId: getNode
+      tags: [nodes]
+      summary: Get node by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Node details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+        "404":
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateNode
+      tags: [nodes]
+      summary: Update a node
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNodeBody"
+      responses:
+        "200":
+          description: Updated node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+        "404":
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteNode
+      tags: [nodes]
+      summary: Remove a node from the federation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Node removed
+        "404":
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sites:
+    get:
+      operationId: listSites
+      tags: [sites]
+      summary: List all sites
+      description: Returns all sites registered in the federation
+      responses:
+        "200":
+          description: List of sites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Site"
+    post:
+      operationId: createSite
+      tags: [sites]
+      summary: Register a new site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSiteBody"
+      responses:
+        "201":
+          description: Created site
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sites/{id}:
+    get:
+      operationId: getSite
+      tags: [sites]
+      summary: Get site by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Site details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateSite
+      tags: [sites]
+      summary: Update a site
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSiteBody"
+      responses:
+        "200":
+          description: Updated site
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteSite
+      tags: [sites]
+      summary: Remove a site from the federation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Site removed
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +278,235 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    FederationStats:
+      type: object
+      properties:
+        totalNodes:
+          type: integer
+        activeNodes:
+          type: integer
+        totalSites:
+          type: integer
+        activeSites:
+          type: integer
+        totalBandwidthGb:
+          type: number
+        totalStorageGb:
+          type: number
+        uptimePercent:
+          type: number
+      required:
+        - totalNodes
+        - activeNodes
+        - totalSites
+        - activeSites
+        - totalBandwidthGb
+        - totalStorageGb
+        - uptimePercent
+
+    Node:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        domain:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, maintenance]
+        region:
+          type: string
+        operatorName:
+          type: string
+        operatorEmail:
+          type: string
+        storageCapacityGb:
+          type: number
+        bandwidthCapacityGb:
+          type: number
+        uptimePercent:
+          type: number
+        siteCount:
+          type: integer
+        publicKey:
+          type: ["string", "null"]
+        joinedAt:
+          type: string
+        lastSeenAt:
+          type: ["string", "null"]
+      required:
+        - id
+        - name
+        - domain
+        - description
+        - status
+        - region
+        - operatorName
+        - operatorEmail
+        - storageCapacityGb
+        - bandwidthCapacityGb
+        - uptimePercent
+        - siteCount
+        - publicKey
+        - joinedAt
+        - lastSeenAt
+
+    CreateNodeBody:
+      type: object
+      properties:
+        name:
+          type: string
+        domain:
+          type: string
+        description:
+          type: string
+        region:
+          type: string
+        operatorName:
+          type: string
+        operatorEmail:
+          type: string
+        storageCapacityGb:
+          type: number
+        bandwidthCapacityGb:
+          type: number
+        publicKey:
+          type: string
+      required:
+        - name
+        - domain
+        - region
+        - operatorName
+        - operatorEmail
+        - storageCapacityGb
+        - bandwidthCapacityGb
+
+    UpdateNodeBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, maintenance]
+        region:
+          type: string
+        operatorName:
+          type: string
+        operatorEmail:
+          type: string
+        storageCapacityGb:
+          type: number
+        bandwidthCapacityGb:
+          type: number
+        uptimePercent:
+          type: number
+
+    Site:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        domain:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, suspended, migrating]
+        siteType:
+          type: string
+          enum: [static, dynamic, blog, portfolio, other]
+        ownerName:
+          type: string
+        ownerEmail:
+          type: string
+        primaryNodeId:
+          type: ["integer", "null"]
+        primaryNodeDomain:
+          type: ["string", "null"]
+        replicaCount:
+          type: integer
+        storageUsedMb:
+          type: number
+        monthlyBandwidthGb:
+          type: number
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - domain
+        - description
+        - status
+        - siteType
+        - ownerName
+        - ownerEmail
+        - primaryNodeId
+        - primaryNodeDomain
+        - replicaCount
+        - storageUsedMb
+        - monthlyBandwidthGb
+        - createdAt
+        - updatedAt
+
+    CreateSiteBody:
+      type: object
+      properties:
+        name:
+          type: string
+        domain:
+          type: string
+        description:
+          type: string
+        siteType:
+          type: string
+          enum: [static, dynamic, blog, portfolio, other]
+        ownerName:
+          type: string
+        ownerEmail:
+          type: string
+        primaryNodeId:
+          type: integer
+      required:
+        - name
+        - domain
+        - siteType
+        - ownerName
+        - ownerEmail
+
+    UpdateSiteBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, migrating]
+        siteType:
+          type: string
+          enum: [static, dynamic, blog, portfolio, other]
+        primaryNodeId:
+          type: integer
+        replicaCount:
+          type: integer
