@@ -15,117 +15,119 @@ A living document tracking what has been built, what is in progress, and where t
 
 ## Phase 1 — Foundation ✅
 
-Core infrastructure, auth, and a working federation protocol.
-
 | Feature | Status | Notes |
 |---|---|---|
-| Monorepo structure (pnpm workspaces) | ✅ | `lib/db`, `artifacts/api-server`, `artifacts/federated-hosting` |
-| PostgreSQL database with Drizzle ORM | ✅ | Nodes, sites, deployments, federation events, auth schemas |
+| Monorepo (pnpm workspaces) | ✅ | lib/db, artifacts/api-server, artifacts/federated-hosting |
+| PostgreSQL + Drizzle ORM | ✅ | Nodes, sites, deployments, federation events, auth, analytics, access, domains |
 | Replit Auth (OpenID Connect) | ✅ | Sign-in, session, user API |
-| Express API server with structured logging | ✅ | Pino logger, request IDs, trust-proxy fix |
-| Ed25519 key pair generation | ✅ | Per-node public/private keys, SPKI format |
-| `/.well-known/federation` discovery endpoint | ✅ | Public node metadata + public key |
-| Federation handshake (node-to-node) | ✅ | Signed ping, peer registration, event logging |
-| Federation ping endpoint | ✅ | Verifies Ed25519 signature from remote node |
-| Federation event log | ✅ | Handshake, ping, site_sync, node_offline, key_rotation |
-| Node health monitor (background job) | ✅ | Pings all peers every 2 min, flips status, logs node_offline events |
-| FEDERATION.md protocol spec | ✅ | Language-agnostic spec for third-party node implementors |
-| Object Storage integration | ✅ | File upload/download for site assets |
-| Site file serving by domain | ✅ | `GET /api/sites/serve/:domain/*` |
-| Capacity tracking (storage + bandwidth) | ✅ | Per-node and network-wide summary |
-| Rate limiting on federation endpoints | ✅ | `express-rate-limit` on handshake/ping |
+| Express 5 API server + structured logging | ✅ | Pino, request IDs, trust-proxy |
+| Ed25519 key pair generation | ✅ | Per-node public/private keys |
+| Federation discovery, handshake, ping | ✅ | Ed25519-signed, event log |
+| Node health monitor (background job) | ✅ | Pings all peers every 2 min |
+| Object storage integration | ✅ | Presigned upload/download |
+| Site file serving by domain | ✅ | Host-header routing + custom domain resolution |
+| Capacity tracking | ✅ | Per-node + network-wide |
+| Rate limiting + production hardening | ✅ | Helmet, compression, error handler, graceful shutdown |
 
 ---
 
-## Phase 2 — User-Facing Product ✅ / 🔄
-
-The dashboard, site management flow, and UI panels users interact with daily.
+## Phase 2 — User-Facing Product ✅
 
 | Feature | Status | Notes |
 |---|---|---|
-| Dashboard with live network stats | ✅ | Active nodes, hosted sites, uptime, bandwidth, 24h activity chart |
-| Node Consensus sidebar | ✅ | Per-node status with health indicator |
-| Federation Nodes list + detail page | ✅ | View all nodes, capacity, generate keys |
-| Hosted Sites list + detail page | ✅ | Network-wide site browser |
-| Sites Directory (public) | ✅ | Filterable public directory of active sites |
-| My Sites (authenticated) | ✅ | Register sites inline, hit counts, last-updated, animated cards |
-| Site registration form (inline modal) | ✅ | No navigation away from My Sites |
-| Deploy Site page | ✅ | File upload and deploy trigger |
-| Federation Protocol page | ✅ | Auto-load identity, live peers grid, auto-refresh event log, collapsible protocol ref |
-| End-to-end deploy flow (sign in → upload → deploy → view) | 🔄 | API works; needs UI polish and end-to-end smoke test |
-| Deployed site actually serves over HTTP | 🔄 | Route exists but needs verification at real domain/path |
+| Dashboard with live network stats + area chart | ✅ | |
+| Federation Nodes + Sites pages | ✅ | |
+| Sites Directory (public, filterable) | ✅ | |
+| My Sites (authenticated, inline register modal) | ✅ | Hit counts, last-updated |
+| Deploy Site page | ✅ | Drag-and-drop, file preview panel, rollback |
+| Federation Protocol page | ✅ | Live peers, event log, protocol reference |
+| Onboarding flow (first-time user) | ✅ | 4-step guided modal, dismissible banner |
 
 ---
 
-## Phase 3 — Bundled Sites 📋
+## Phase 3 — Bundled Sites ✅
 
-Two real sites that ship with every node and demonstrate the platform.
+Auto-seeded demo sites ship with every node on first boot.
+
+---
+
+## Phase 4 — Federation Replication ✅
 
 | Feature | Status | Notes |
 |---|---|---|
-| `fedhosting-landing` — project landing page | ✅ | Live at `/api/sites/serve/fedhosting.network/` — pulls live node stats |
-| `nohands-company` — No Hands Company portfolio | ✅ | Live at `/api/sites/serve/nohands.company/` |
-| Auto-seeder on startup (`seedBundledSites`) | ✅ | Idempotent — plants both sites into DB + object storage on first boot |
+| Site sync push (notify peers on deploy) | ✅ | Signed site_sync events |
+| Federation manifest endpoint | ✅ | GET /federation/manifest/:domain — signed file list + presigned URLs |
+| Site sync pull (actual file replication) | ✅ | POST /federation/sync downloads files, stores locally, creates replica deployment |
+| Gossip-based peer discovery | ✅ | 5-min background push + manual discover trigger |
 
 ---
 
-## Phase 4 — Federation Replication 📋
-
-Making the network actually federated — sites sync across nodes.
+## Phase 5 — Access Control + Custom Domains ✅
 
 | Feature | Status | Notes |
 |---|---|---|
-| Site sync push (notify peers of new deployment) | 🔄 | `POST /api/federation/notify-sync` exists; peers don't pull yet |
-| Site sync pull (fetch files from originating node) | 📋 | Node receives notify-sync, downloads files, creates local deployment |
-| Conflict resolution (same domain on two nodes) | 📋 | Trust-chain based on `joinedAt` and signature |
-| Replication status UI | 📋 | Show which peers have a copy of each site |
-| Automatic re-sync on node reconnect | 📋 | When health monitor sees a node come back online, trigger re-sync |
+| Site visibility (public / private / password) | ✅ | scrypt password hash, unlock cookie |
+| Team members (owner / editor / viewer) | ✅ | |
+| API tokens | ✅ | SHA-256 hashed, named, optional expiry |
+| CLI Bearer token auth | ✅ | Authorization: Bearer fh_<token> |
+| Custom domain CNAME + TXT verification | ✅ | DNS lookup at _fh-verify.<domain> |
 
 ---
 
-## Phase 5 — Polish & Production 📋
-
-Making the product ready for real users and real traffic.
+## Phase 6 — Analytics, Admin, CLI, Docker ✅
 
 | Feature | Status | Notes |
 |---|---|---|
-| Mobile-responsive layout | 📋 | Dashboard and My Sites need responsive breakpoints |
-| Onboarding flow (first-time user guide) | 📋 | Walk new users through: sign in → register site → upload → deploy |
-| Custom domain support | 📋 | CNAME records pointing to node, TLS via Let's Encrypt |
-| Site preview before deploy | 📋 | Show a static preview of uploaded files |
-| Deployment rollback / version history | 📋 | Keep last N deployments per site, one-click rollback |
-| Per-site analytics (hit counts, unique visitors, geographic) | 📋 | Extend existing `hit_count` tracking |
-| Email / webhook notifications for node events | 📋 | Node offline, new peer, deployment failed |
-| Production deployment configuration | 📋 | Deploy to Replit autoscale, environment secrets, health check URL |
-| Node operator settings page | 📋 | Edit node name, region, storage limits, operator contact |
+| Per-site analytics (hits, bandwidth, referrers, top paths) | ✅ | Hourly rollup via background flush job |
+| Analytics dashboard page | ✅ | Period selector, area chart, top paths + referrers |
+| Node operator admin dashboard | ✅ | System info, editable settings, federation events |
+| fh CLI tool | ✅ | login, deploy, sites, tokens commands |
+| Deployment rollback | ✅ | One-click, history preserved |
+| Site file preview before deploy | ✅ | Collapsible file tree with icons + live/pending status |
+| Docker Compose (self-hosted stack) | ✅ | PostgreSQL 16 + MinIO + migrate + app |
+| Self-hosting guide | ✅ | docs/SELF_HOSTING.md |
+| GitHub Actions deploy workflow | ✅ | .github/workflows/deploy.yml |
+| Drizzle migrations (replace db push) | ✅ | generate + migrate scripts |
+| CLAUDE.md development charter | ✅ | Scale, architecture, principles, what not to do |
 
 ---
 
-## Phase 6 — Growth & Internationalisation 🔮
-
-Expanding reach, especially toward the Indonesian market.
+## Phase 7 — Production Launch 📋
 
 | Feature | Status | Notes |
 |---|---|---|
-| Bahasa Indonesia i18n | 🔮 | UI translations for the Indonesian audience |
-| Node discovery registry | 🔮 | A well-known public list of active federation nodes to bootstrap from |
-| Public API docs site | 🔮 | Developer-facing docs generated from OpenAPI spec |
-| Node marketplace / directory | 🔮 | Browse and join existing federation networks |
-| Paid plans / node sponsorship | 🔮 | Revenue model for node operators |
-| CLI tool (`fedhost deploy`) | 🔮 | Deploy a site from the terminal without the UI |
-| GitHub Actions integration | 🔮 | Auto-deploy on `git push` via CI |
+| Bahasa Indonesia i18n | 📋 | Priority for Indonesian/SE Asian market |
+| End-to-end test suite (Playwright) | 📋 | sign-in, register, upload, deploy, verify |
+| OpenAPI spec sync with actual routes | 📋 | CI check |
+| Email / webhook notifications | 📋 | Node offline, deploy failed, new peer |
+| Rollback via CLI | 📋 | fh rollback --site <id> --to <version> |
+| @fedhost/cli published to npm | 📋 | Required for GitHub Actions workflow |
+| Public bootstrap node registry | 📋 | Well-known list for gossip bootstrapping |
+| Mobile-responsive layout audit | 📋 | Dashboard + My Sites |
 
 ---
 
-## Tech Debt & Maintenance
+## Phase 8 — Growth 🔮
+
+| Feature | Status | Notes |
+|---|---|---|
+| Node marketplace / directory | 🔮 | |
+| Let's Encrypt TLS automation | 🔮 | Auto-provision for custom domains |
+| Geographic routing | 🔮 | Serve from closest node |
+| Paid plans / node sponsorship | 🔮 | Revenue model for operators |
+| Public API docs site | 🔮 | Generated from OpenAPI spec |
+
+---
+
+## Tech Debt
 
 | Item | Priority |
 |---|---|
-| End-to-end test suite (Playwright) | High |
-| OpenAPI spec kept in sync with actual routes | Medium |
-| Rate limiting on all write endpoints (not just federation) | Medium |
-| Drizzle migrations instead of `db push` | Medium |
-| Node.js graceful shutdown improvements | Low |
+| E2E test suite (Playwright) | High |
+| OpenAPI spec kept in sync | Medium |
+| @fedhost/cli npm publish | Medium |
+| Rate limiting on all write endpoints | Medium |
+| Same-domain conflict resolution across nodes | Medium |
 
 ---
 

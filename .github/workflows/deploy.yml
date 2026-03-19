@@ -1,0 +1,113 @@
+name: Deploy to FedHost
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "dist/**"
+      - "public/**"
+      - "out/**"
+      - "build/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      site_id:
+        description: "FedHost site ID to deploy to"
+        required: true
+        type: string
+      dir:
+        description: "Directory to deploy (default: dist)"
+        required: false
+        default: "dist"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Required repository secrets:
+#   FH_TOKEN      — API token from FedHost (My Sites → API Tokens → New Token)
+#   FH_NODE_URL   — URL of your FedHost node (e.g. https://node.example.com)
+#   FH_SITE_ID    — Numeric site ID from FedHost
+#
+# Optional:
+#   FH_DEPLOY_DIR — Directory to deploy (default: dist)
+# ──────────────────────────────────────────────────────────────────────────────
+
+env:
+  FH_NODE_URL:   ${{ secrets.FH_NODE_URL }}
+  FH_TOKEN:      ${{ secrets.FH_TOKEN }}
+  FH_SITE_ID:    ${{ inputs.site_id || secrets.FH_SITE_ID }}
+  FH_DEPLOY_DIR: ${{ inputs.dir || vars.FH_DEPLOY_DIR || 'dist' }}
+
+jobs:
+  deploy:
+    name: Deploy to FedHost
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Optional: build step ─────────────────────────────────────────────
+      # Uncomment the block that matches your project's build toolchain.
+      # Delete everything in this section if you push pre-built files.
+
+      # - name: Set up Node.js
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: 20
+      #     cache: npm          # or: pnpm / yarn
+
+      # - name: Install dependencies
+      #   run: npm ci           # or: pnpm install --frozen-lockfile
+
+      # - name: Build
+      #   run: npm run build    # adjust to your build command
+
+      # ── Verify the deploy directory exists ──────────────────────────────
+      - name: Verify deploy directory
+        run: |
+          if [ ! -d "$FH_DEPLOY_DIR" ]; then
+            echo "::error::Deploy directory '$FH_DEPLOY_DIR' does not exist."
+            echo "::error::Make sure your build step outputs files there, or set FH_DEPLOY_DIR."
+            exit 1
+          fi
+          FILE_COUNT=$(find "$FH_DEPLOY_DIR" -type f | wc -l)
+          echo "Found $FILE_COUNT file(s) in $FH_DEPLOY_DIR"
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "::error::No files found in '$FH_DEPLOY_DIR'. Nothing to deploy."
+            exit 1
+          fi
+
+      # ── Install the fh CLI ───────────────────────────────────────────────
+      - name: Install FedHost CLI
+        run: npm install -g @fedhost/cli 2>/dev/null || npx --yes @fedhost/cli --version || true
+        # Fall back to running from source if not yet on npm
+        # TODO: replace with: npm install -g @fedhost/cli once published
+
+      # ── Authenticate ─────────────────────────────────────────────────────
+      - name: Authenticate with FedHost node
+        run: |
+          fh login \
+            --node "$FH_NODE_URL" \
+            --token "$FH_TOKEN"
+
+      # ── Deploy ───────────────────────────────────────────────────────────
+      - name: Deploy site
+        id: deploy
+        run: |
+          fh deploy "$FH_DEPLOY_DIR" \
+            --site "$FH_SITE_ID" \
+            --concurrency 6
+
+      # ── Summary ──────────────────────────────────────────────────────────
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "## ✅ Deployed to FedHost" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Node | \`$FH_NODE_URL\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Site ID | \`$FH_SITE_ID\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Directory | \`$FH_DEPLOY_DIR\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY

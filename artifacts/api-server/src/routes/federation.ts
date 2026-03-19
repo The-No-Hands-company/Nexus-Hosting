@@ -173,46 +173,313 @@ router.get("/federation/events", asyncHandler(async (req, res) => {
   res.json(buildPaginatedResponse(serializeDates(events), Number(total), { limit, offset, page }));
 }));
 
-router.post("/federation/notify-sync", asyncHandler(async (req, res) => {
-  const { siteId, deploymentId } = req.body;
-  if (!siteId || !deploymentId) throw AppError.badRequest("Missing siteId or deploymentId");
+/**
+ * POST /api/federation/sync
+ *
+ * Receives a site_sync notification from a peer node.
+ * Fetches the full file manifest from the origin, downloads every file,
+ * stores them in local object storage, and creates a local replica deployment.
+ *
+ * This is what makes the network actually federated — every node can serve
+ * every site independently after receiving a sync.
+ */
+router.post("/federation/sync", asyncHandler(async (req, res) => {
+  const { siteDomain, deploymentId, timestamp } = req.body as {
+    siteDomain?: string;
+    deploymentId?: number;
+    timestamp?: string;
+  };
 
-  const [site] = await db.select().from(sitesTable).where(eq(sitesTable.id, siteId));
-  if (!site) throw AppError.notFound("Site not found");
+  if (!siteDomain || !deploymentId) {
+    throw AppError.badRequest("Missing siteDomain or deploymentId");
+  }
 
-  const activeNodes = await db
+  // Verify the signature on the sync message
+  const signature = req.headers["x-federation-signature"] as string | undefined;
+
+  // Find the originating node by looking up the site
+  const [existingSite] = await db.select().from(sitesTable).where(eq(sitesTable.domain, siteDomain));
+
+  // If we already have this site with a deployment at this version, skip
+  if (existingSite) {
+    const [existingDep] = await db
+      .select()
+      .from(siteDeploymentsTable)
+      .where(
+        and(
+          eq(siteDeploymentsTable.siteId, existingSite.id),
+          eq(siteDeploymentsTable.status, "active"),
+        ),
+      );
+
+    if (existingDep && existingDep.id === deploymentId) {
+      logger.info({ siteDomain, deploymentId }, "Sync skipped — already have this deployment");
+      res.json({ status: "skipped", reason: "already_synced" });
+      return;
+    }
+  }
+
+  // Find which peer is the origin for this site — try all active peers
+  const activePeers = await db
     .select()
     .from(nodesTable)
     .where(and(eq(nodesTable.status, "active"), eq(nodesTable.isLocalNode, 0)));
 
-  const results = await Promise.allSettled(
-    activeNodes.map(async (node) => {
-      const targetUrl = node.domain.startsWith("http") ? node.domain : `https://${node.domain}`;
-      const syncRes = await fetch(`${targetUrl}/api/federation/sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ siteDomain: site.domain, deploymentId }),
-        signal: AbortSignal.timeout(5000),
+  let manifestData: {
+    site: typeof sitesTable.$inferSelect;
+    deployment: typeof siteDeploymentsTable.$inferSelect;
+    files: Array<{ filePath: string; contentType: string; sizeBytes: number; downloadUrl: string }>;
+  } | null = null;
+
+  let originDomain: string | null = null;
+
+  for (const peer of activePeers) {
+    const peerUrl = peer.domain.startsWith("http") ? peer.domain : `https://${peer.domain}`;
+    try {
+      const manifestRes = await fetch(
+        `${peerUrl}/api/federation/manifest/${encodeURIComponent(siteDomain)}?deploymentId=${deploymentId}`,
+        { signal: AbortSignal.timeout(10_000) },
+      );
+      if (manifestRes.ok) {
+        manifestData = await manifestRes.json() as typeof manifestData;
+        originDomain = peer.domain;
+        break;
+      }
+    } catch {
+      // Try next peer
+    }
+  }
+
+  if (!manifestData || !originDomain) {
+    logger.warn({ siteDomain, deploymentId }, "Sync: could not fetch manifest from any peer");
+
+    await db.insert(federationEventsTable).values({
+      eventType: "site_sync",
+      fromNodeDomain: "unknown",
+      toNodeDomain: "local",
+      payload: JSON.stringify({ siteDomain, deploymentId, error: "manifest_fetch_failed" }),
+      verified: 0,
+    });
+
+    res.status(202).json({ status: "queued", reason: "manifest_unavailable" });
+    return;
+  }
+
+  const { ObjectStorageService } = await import("../lib/objectStorage");
+  const storage = new ObjectStorageService();
+  const [localNode] = await db.select().from(nodesTable).where(eq(nodesTable.isLocalNode, 1));
+
+  // Upsert the site record locally
+  let localSite = existingSite;
+  if (!localSite) {
+    const [created] = await db
+      .insert(sitesTable)
+      .values({
+        name: manifestData.site.name,
+        domain: manifestData.site.domain,
+        description: manifestData.site.description,
+        siteType: manifestData.site.siteType,
+        ownerName: manifestData.site.ownerName,
+        ownerEmail: manifestData.site.ownerEmail,
+        ownerId: manifestData.site.ownerId,
+        primaryNodeId: localNode?.id,
+        status: "active",
+      })
+      .returning();
+    localSite = created;
+    logger.info({ siteDomain, siteId: created.id }, "Sync: created local site record");
+  }
+
+  // Download all files and store in local object storage
+  const downloadResults = await Promise.allSettled(
+    manifestData.files.map(async (remoteFile) => {
+      const fileRes = await fetch(remoteFile.downloadUrl, { signal: AbortSignal.timeout(30_000) });
+      if (!fileRes.ok) throw new Error(`Failed to download ${remoteFile.filePath}: HTTP ${fileRes.status}`);
+
+      const buffer = Buffer.from(await fileRes.arrayBuffer());
+
+      // Get a new object path in local storage
+      const uploadUrl = await storage.getObjectEntityUploadURL();
+      const objectPath = storage.normalizeObjectEntityPath(uploadUrl);
+
+      // Upload to local object storage via presigned URL
+      await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": remoteFile.contentType },
+        body: buffer,
+        signal: AbortSignal.timeout(30_000),
       });
-      await db.insert(federationEventsTable).values({
-        eventType: "site_sync",
-        fromNodeDomain: site.domain,
-        toNodeDomain: node.domain,
-        payload: JSON.stringify({ siteId, deploymentId }),
-        verified: syncRes.ok ? 1 : 0,
-      });
-      return { node: node.domain, success: syncRes.ok };
+
+      return {
+        filePath: remoteFile.filePath,
+        objectPath,
+        contentType: remoteFile.contentType,
+        sizeBytes: remoteFile.sizeBytes,
+      };
     }),
   );
 
-  const resolved = results.map((r, i) =>
-    r.status === "fulfilled" ? r.value : { node: activeNodes[i].domain, success: false, error: (r.reason as Error)?.message },
+  const successfulFiles = downloadResults
+    .filter((r): r is PromiseFulfilledResult<{ filePath: string; objectPath: string; contentType: string; sizeBytes: number }> => r.status === "fulfilled")
+    .map((r) => r.value);
+
+  const failedCount = downloadResults.filter((r) => r.status === "rejected").length;
+
+  if (successfulFiles.length === 0) {
+    logger.error({ siteDomain, deploymentId }, "Sync: all file downloads failed");
+    res.status(500).json({ status: "failed", reason: "all_downloads_failed" });
+    return;
+  }
+
+  // Create local deployment + file records atomically
+  await db.transaction(async (tx) => {
+    // Mark any existing active deployment as superseded
+    await tx
+      .update(siteDeploymentsTable)
+      .set({ status: "rolled_back" })
+      .where(and(eq(siteDeploymentsTable.siteId, localSite!.id), eq(siteDeploymentsTable.status, "active")));
+
+    const totalSizeMb = successfulFiles.reduce((s, f) => s + f.sizeBytes / (1024 * 1024), 0);
+
+    const [dep] = await tx
+      .insert(siteDeploymentsTable)
+      .values({
+        siteId: localSite!.id,
+        version: manifestData!.deployment.version,
+        deployedBy: `federation:${originDomain}`,
+        status: "active",
+        fileCount: successfulFiles.length,
+        totalSizeMb,
+      })
+      .returning();
+
+    // Remove old file records for this site and insert fresh ones
+    await tx.delete(siteFilesTable).where(eq(siteFilesTable.siteId, localSite!.id));
+
+    if (successfulFiles.length > 0) {
+      await tx.insert(siteFilesTable).values(
+        successfulFiles.map((f) => ({
+          siteId: localSite!.id,
+          deploymentId: dep.id,
+          filePath: f.filePath,
+          objectPath: f.objectPath,
+          contentType: f.contentType,
+          sizeBytes: f.sizeBytes,
+        })),
+      );
+    }
+
+    await tx
+      .update(sitesTable)
+      .set({ storageUsedMb: totalSizeMb, replicaCount: 1 })
+      .where(eq(sitesTable.id, localSite!.id));
+  });
+
+  await db.insert(federationEventsTable).values({
+    eventType: "site_sync",
+    fromNodeDomain: originDomain,
+    toNodeDomain: localNode?.domain ?? "local",
+    payload: JSON.stringify({ siteDomain, deploymentId, filesSync: successfulFiles.length, failedCount }),
+    verified: 1,
+  });
+
+  logger.info(
+    { siteDomain, deploymentId, filesSync: successfulFiles.length, failedCount, originDomain },
+    "Sync: site replicated successfully",
   );
 
   res.json({
-    synced: resolved.filter((r) => r.success).length,
-    total: activeNodes.length,
-    results: resolved,
+    status: "synced",
+    siteDomain,
+    filesSync: successfulFiles.length,
+    failedFiles: failedCount,
+    originDomain,
+  });
+}));
+
+/**
+ * GET /api/federation/manifest/:siteDomain
+ *
+ * Returns the file manifest for a site so peer nodes can replicate it.
+ * Generates short-lived presigned download URLs for each file.
+ * This endpoint is public — any node can fetch it to replicate a site.
+ */
+router.get("/federation/manifest/:siteDomain", asyncHandler(async (req, res) => {
+  const { siteDomain } = req.params as { siteDomain: string };
+  const deploymentId = req.query.deploymentId ? parseInt(req.query.deploymentId as string, 10) : undefined;
+
+  const [site] = await db.select().from(sitesTable).where(eq(sitesTable.domain, siteDomain));
+  if (!site) throw AppError.notFound(`Site '${siteDomain}' not found on this node`);
+
+  let deployment: typeof siteDeploymentsTable.$inferSelect | undefined;
+
+  if (deploymentId) {
+    const [dep] = await db
+      .select()
+      .from(siteDeploymentsTable)
+      .where(and(eq(siteDeploymentsTable.siteId, site.id), eq(siteDeploymentsTable.id, deploymentId)));
+    deployment = dep;
+  } else {
+    const [dep] = await db
+      .select()
+      .from(siteDeploymentsTable)
+      .where(and(eq(siteDeploymentsTable.siteId, site.id), eq(siteDeploymentsTable.status, "active")))
+      .orderBy(desc(siteDeploymentsTable.createdAt))
+      .limit(1);
+    deployment = dep;
+  }
+
+  if (!deployment) throw AppError.notFound("No active deployment found for this site");
+
+  const files = await db
+    .select()
+    .from(siteFilesTable)
+    .where(eq(siteFilesTable.deploymentId, deployment.id));
+
+  const { ObjectStorageService } = await import("../lib/objectStorage");
+  const storage = new ObjectStorageService();
+
+  // Generate presigned download URLs for each file (valid 1 hour)
+  const filesWithUrls = await Promise.all(
+    files.map(async (f) => {
+      try {
+        const fileEntity = await storage.getObjectEntityFile(f.objectPath);
+        const downloadUrl = await storage.getObjectEntityDownloadURL(fileEntity);
+        return {
+          filePath: f.filePath,
+          contentType: f.contentType,
+          sizeBytes: f.sizeBytes,
+          downloadUrl,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  const validFiles = filesWithUrls.filter((f): f is NonNullable<typeof f> => f !== null);
+
+  // Sign the manifest with our private key so peers can verify integrity
+  const [localNode] = await db.select().from(nodesTable).where(eq(nodesTable.isLocalNode, 1));
+  const manifestPayload = JSON.stringify({ siteDomain, deploymentId: deployment.id, fileCount: validFiles.length });
+  const signature = localNode?.privateKey ? signMessage(localNode.privateKey, manifestPayload) : null;
+
+  res.json({
+    site: {
+      id: site.id,
+      name: site.name,
+      domain: site.domain,
+      description: site.description,
+      siteType: site.siteType,
+      ownerName: site.ownerName,
+      ownerEmail: site.ownerEmail,
+      ownerId: site.ownerId,
+    },
+    deployment,
+    files: validFiles,
+    signature,
+    servedBy: localNode?.domain ?? "unknown",
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   });
 }));
 

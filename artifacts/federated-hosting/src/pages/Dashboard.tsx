@@ -9,12 +9,16 @@ import { Link } from "wouter";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useAuth } from "@workspace/replit-auth-web";
 import { useStatsHourly, useNodes } from "@/lib/apiHooks";
+import { useState } from "react";
+import { OnboardingBanner, OnboardingModal, useOnboarding } from "@/components/Onboarding";
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading, error: statsError } = useGetFederationStats();
   const { data: nodes, isLoading: nodesLoading } = useNodes();
   const { data: hourly, isLoading: hourlyLoading } = useStatsHourly();
   const { isAuthenticated, login } = useAuth();
+  const { shouldShow } = useOnboarding();
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   if (statsLoading) return <LoadingState />;
   if (statsError || !stats) return <ErrorState message="Failed to load federation statistics." />;
@@ -38,12 +42,11 @@ export default function Dashboard() {
       </div>
 
       {/* Onboarding banner for guests */}
-      {!isAuthenticated && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
+      {!isAuthenticated && shouldShow && (
+        <OnboardingBanner onOpen={() => setOnboardingOpen(true)} />
+      )}
+      {!isAuthenticated && !shouldShow && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <Card className="border-primary/30 bg-primary/5 relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-transparent pointer-events-none" />
             <CardContent className="flex flex-col sm:flex-row items-start sm:items-center gap-4 py-5 px-6">
@@ -52,23 +55,15 @@ export default function Dashboard() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white font-semibold text-sm">Welcome to Federated Hosting</p>
-                <p className="text-muted-foreground text-xs mt-0.5">
-                  Sign in to register your own site, upload files, and deploy to the federation network.
-                </p>
+                <p className="text-muted-foreground text-xs mt-0.5">Sign in to register your own site and deploy to the federation network.</p>
               </div>
               <div className="flex gap-2 shrink-0 flex-wrap">
-                <Button
-                  size="sm"
-                  className="bg-primary text-black hover:bg-primary/90 font-semibold"
-                  onClick={login}
-                >
-                  Get Started
-                  <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                <Button size="sm" className="bg-primary text-black hover:bg-primary/90 font-semibold" onClick={login}>
+                  Get Started <ChevronRight className="w-3.5 h-3.5 ml-1" />
                 </Button>
                 <a href="https://github.com/The-No-Hands-company/Federated-Hosting" target="_blank" rel="noopener noreferrer">
                   <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white">
-                    <BookOpen className="w-3.5 h-3.5 mr-1.5" />
-                    Learn More
+                    <BookOpen className="w-3.5 h-3.5 mr-1.5" />Learn More
                   </Button>
                 </a>
               </div>
@@ -76,6 +71,7 @@ export default function Dashboard() {
           </Card>
         </motion.div>
       )}
+      <OnboardingModal open={onboardingOpen} onClose={() => setOnboardingOpen(false)} />
 
       {/* Hero Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

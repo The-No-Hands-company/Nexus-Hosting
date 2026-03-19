@@ -154,6 +154,17 @@ export class ObjectStorageService {
     return objectFile;
   }
 
+  /**
+   * Generate a short-lived presigned GET URL for a file.
+   * Used by the federation manifest endpoint so peer nodes can download files.
+   */
+  async getObjectEntityDownloadURL(file: File, ttlSec = 3600): Promise<string> {
+    const metadata = file.metadata as { bucket?: string; name?: string };
+    const bucketName = metadata.bucket ?? file.bucket?.name ?? "";
+    const objectName = metadata.name ?? file.name ?? "";
+    return signObjectURL({ bucketName, objectName, method: "GET", ttlSec });
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith("https://storage.googleapis.com/")) {
       return rawPath;

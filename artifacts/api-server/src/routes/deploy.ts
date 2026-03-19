@@ -229,6 +229,90 @@ router.get("/sites/:id/deployments", asyncHandler(async (req: Request, res: Resp
   res.json(deployments);
 }));
 
+/**
+ * POST /api/sites/:id/deployments/:depId/rollback
+ *
+ * Rolls back a site to a specific previous deployment.
+ * Creates a NEW deployment record pointing to the same files as the target,
+ * so the history is preserved and the rollback itself is auditable.
+ */
+router.post("/sites/:id/deployments/:depId/rollback", asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
+  const siteId = parseInt(req.params.id as string, 10);
+  const depId  = parseInt(req.params.depId as string, 10);
+  if (Number.isNaN(siteId) || Number.isNaN(depId)) throw AppError.badRequest("Invalid ID");
+
+  const [site] = await db.select().from(sitesTable).where(eq(sitesTable.id, siteId));
+  if (!site) throw AppError.notFound("Site not found");
+  if (site.ownerId !== req.user.id) throw AppError.forbidden("Only the site owner can rollback deployments");
+
+  const [targetDep] = await db
+    .select()
+    .from(siteDeploymentsTable)
+    .where(and(eq(siteDeploymentsTable.id, depId), eq(siteDeploymentsTable.siteId, siteId)));
+  if (!targetDep) throw AppError.notFound("Deployment not found");
+
+  // Get the files from the target deployment
+  const targetFiles = await db
+    .select()
+    .from(siteFilesTable)
+    .where(eq(siteFilesTable.deploymentId, depId));
+
+  if (targetFiles.length === 0) throw AppError.badRequest("Target deployment has no files");
+
+  const newDeployment = await db.transaction(async (tx) => {
+    // Mark the current active deployment as rolled_back
+    await tx
+      .update(siteDeploymentsTable)
+      .set({ status: "rolled_back" })
+      .where(and(eq(siteDeploymentsTable.siteId, siteId), eq(siteDeploymentsTable.status, "active")));
+
+    const [{ depCount }] = await tx
+      .select({ depCount: count() })
+      .from(siteDeploymentsTable)
+      .where(eq(siteDeploymentsTable.siteId, siteId));
+
+    const totalSizeMb = targetFiles.reduce((s, f) => s + f.sizeBytes / (1024 * 1024), 0);
+
+    // Create a new deployment (rollback is a forward operation — no time travel)
+    const [newDep] = await tx
+      .insert(siteDeploymentsTable)
+      .values({
+        siteId,
+        version: Number(depCount) + 1,
+        deployedBy: req.user.id,
+        status: "active",
+        fileCount: targetFiles.length,
+        totalSizeMb,
+      })
+      .returning();
+
+    // Re-point all the target files at the new deployment
+    // We insert copies so the history of the old deployment remains intact
+    await tx.insert(siteFilesTable).values(
+      targetFiles.map((f) => ({
+        siteId,
+        deploymentId: newDep.id,
+        filePath: f.filePath,
+        objectPath: f.objectPath,
+        contentType: f.contentType,
+        sizeBytes: f.sizeBytes,
+      })),
+    );
+
+    await tx
+      .update(sitesTable)
+      .set({ storageUsedMb: totalSizeMb })
+      .where(eq(sitesTable.id, siteId));
+
+    return newDep;
+  });
+
+  logger.info({ siteId, targetDepId: depId, newDepId: newDeployment.id }, "Site rolled back");
+  res.json({ ...newDeployment, rolledBackFrom: depId });
+}));
+
 router.get("/sites/serve/:domain/*filePath", asyncHandler(async (req: Request, res: Response) => {
   const domain = req.params.domain as string;
   const rawPath = req.params.filePath as string;
