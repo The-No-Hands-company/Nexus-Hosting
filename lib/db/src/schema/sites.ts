@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, real, integer, pgEnum, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, integer, bigint, pgEnum, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -19,6 +19,8 @@ export const sitesTable = pgTable("sites", {
   replicaCount: integer("replica_count").notNull().default(1),
   storageUsedMb: real("storage_used_mb").notNull().default(0),
   monthlyBandwidthGb: real("monthly_bandwidth_gb").notNull().default(0),
+  hitCount: bigint("hit_count", { mode: "number" }).notNull().default(0),
+  lastHitAt: timestamp("last_hit_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [
@@ -34,6 +36,8 @@ export const insertSiteSchema = createInsertSchema(sitesTable).omit({
   replicaCount: true,
   storageUsedMb: true,
   monthlyBandwidthGb: true,
+  hitCount: true,
+  lastHitAt: true,
 });
 export type InsertSite = z.infer<typeof insertSiteSchema>;
 export type Site = typeof sitesTable.$inferSelect;

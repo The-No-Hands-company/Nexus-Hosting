@@ -1,5 +1,6 @@
 import { useParams, Link, useLocation } from "wouter";
-import { useGetNode, useListSites, useDeleteNode } from "@workspace/api-client-react";
+import { useGetNode, useDeleteNode } from "@workspace/api-client-react";
+import { useSites } from "@/lib/apiHooks";
 import { LoadingState, ErrorState, StatusBadge } from "@/components/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,7 @@ export default function NodeDetail() {
   
   const nodeId = parseInt(id || "0", 10);
   const { data: node, isLoading, error } = useGetNode(nodeId);
-  const { data: sites } = useListSites();
+  const { data: sites } = useSites();
   
   const deleteMutation = useDeleteNode({
     mutation: {

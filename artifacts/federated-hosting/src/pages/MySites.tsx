@@ -1,5 +1,5 @@
 import { useAuth } from "@workspace/replit-auth-web";
-import { useListSites } from "@workspace/api-client-react";
+import { useSites } from "@/lib/apiHooks";
 import { Link } from "wouter";
 import { Globe, Upload, ExternalLink, Plus, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function MySites() {
   const { user, isAuthenticated, login } = useAuth();
-  const { data: allSites, isLoading } = useListSites();
+  const { data: allSites, isLoading } = useSites();
 
   if (!isAuthenticated) {
     return (

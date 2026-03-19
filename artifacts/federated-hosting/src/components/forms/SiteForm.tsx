@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useCreateSite, useUpdateSite, useListNodes } from "@workspace/api-client-react";
+import { useCreateSite, useUpdateSite } from "@workspace/api-client-react";
+import { useNodes } from "@/lib/apiHooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -32,7 +33,7 @@ interface SiteFormProps {
 export function SiteForm({ onSuccess, initialData }: SiteFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: nodes } = useListNodes();
+  const { data: nodes } = useNodes();
   
   const form = useForm<SiteFormValues>({
     resolver: zodResolver(siteSchema),

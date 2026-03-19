@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListSites } from "@workspace/api-client-react";
+import { useSites } from "@/lib/apiHooks";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 
 export default function SiteList() {
-  const { data: sites, isLoading, error } = useListSites();
+  const { data: sites, isLoading, error } = useSites();
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 

@@ -15,6 +15,7 @@ import SiteDetail from "@/pages/sites/SiteDetail";
 import MySites from "@/pages/MySites";
 import DeploySite from "@/pages/DeploySite";
 import Federation from "@/pages/Federation";
+import Directory from "@/pages/Directory";
 
 function onQueryError(error: unknown) {
   const err = error as { status?: number; message?: string };
@@ -55,6 +56,7 @@ function Router() {
           <Route path="/sites/:id" component={SiteDetail} />
           <Route path="/my-sites" component={MySites} />
           <Route path="/deploy/:id" component={DeploySite} />
+          <Route path="/directory" component={Directory} />
           <Route path="/federation" component={Federation} />
           <Route component={NotFound} />
         </Switch>

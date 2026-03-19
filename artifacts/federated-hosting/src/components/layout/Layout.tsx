@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio } from "lucide-react";
+import { Activity, LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio, BookMarked } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -13,11 +13,13 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@workspace/replit-auth-web";
+import { useHealthStatus } from "@/lib/apiHooks";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/nodes", label: "Federation Nodes", icon: Server },
   { href: "/sites", label: "Hosted Sites", icon: Globe },
+  { href: "/directory", label: "Sites Directory", icon: BookMarked },
   { href: "/federation", label: "Federation Protocol", icon: Radio },
 ];
 
@@ -29,6 +31,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, isAuthenticated, login, logout } = useAuth();
+  const { data: health } = useHealthStatus();
 
   const NavLinks = () => (
     <>
@@ -155,14 +158,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="bg-card/50 rounded-xl p-4 border border-white/5 flex flex-col gap-3">
             <div className="flex items-center justify-between text-xs font-mono">
               <span className="text-muted-foreground">API Status</span>
-              <span className="text-status-active flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-status-active animate-pulse"></span>
-                Online
-              </span>
+              {health ? (
+                <span className={cn("flex items-center gap-1.5", health.status === "healthy" ? "text-status-active" : "text-status-inactive")}>
+                  <span className={cn("w-2 h-2 rounded-full", health.status === "healthy" ? "bg-status-active animate-pulse" : "bg-status-inactive")} />
+                  {health.status === "healthy" ? "Online" : "Degraded"}
+                </span>
+              ) : (
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" />
+                  Checking…
+                </span>
+              )}
             </div>
             <div className="flex items-center justify-between text-xs font-mono">
               <span className="text-muted-foreground">Version</span>
-              <span>v0.2.0-alpha</span>
+              <span className="text-muted-foreground/80">{health?.version ? `v${health.version}` : "—"}</span>
             </div>
           </div>
         </div>

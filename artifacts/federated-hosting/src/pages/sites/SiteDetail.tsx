@@ -1,5 +1,6 @@
 import { useParams, Link, useLocation } from "wouter";
-import { useGetSite, useDeleteSite, useListNodes } from "@workspace/api-client-react";
+import { useGetSite, useDeleteSite } from "@workspace/api-client-react";
+import { useNodes } from "@/lib/apiHooks";
 import { LoadingState, ErrorState, StatusBadge } from "@/components/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,7 @@ export default function SiteDetail() {
   
   const siteId = parseInt(id || "0", 10);
   const { data: site, isLoading, error } = useGetSite(siteId);
-  const { data: nodes } = useListNodes(); // To resolve node details if needed
+  const { data: nodes } = useNodes();
   
   const deleteMutation = useDeleteSite({
     mutation: {

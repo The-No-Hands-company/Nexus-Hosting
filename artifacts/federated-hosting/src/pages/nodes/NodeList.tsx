@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListNodes } from "@workspace/api-client-react";
+import { useNodes } from "@/lib/apiHooks";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { NodeForm } from "@/components/forms/NodeForm";
 import { motion } from "framer-motion";
 
 export default function NodeList() {
-  const { data: nodes, isLoading, error } = useListNodes();
+  const { data: nodes, isLoading, error } = useNodes();
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 

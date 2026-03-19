@@ -1,21 +1,20 @@
-import { useGetFederationStats, useListNodes } from "@workspace/api-client-react";
+import { useGetFederationStats } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Server, Globe, Activity, HardDrive, Cpu, ArrowUpRight, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Server, Globe, Activity, HardDrive, ArrowUpRight, Loader2, Rocket, ChevronRight, BookOpen } from "lucide-react";
 import { LoadingState, ErrorState, StatusBadge } from "@/components/shared";
 import { formatGb, formatPercent } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-
-// Mock time-series data since API only returns aggregate totals
-const mockBandwidthData = Array.from({ length: 24 }).map((_, i) => ({
-  time: `${i}:00`,
-  gb: Math.floor(Math.random() * 50) + 150 + (Math.sin(i / 3) * 50),
-}));
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { useAuth } from "@workspace/replit-auth-web";
+import { useStatsHourly, useNodes } from "@/lib/apiHooks";
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading, error: statsError } = useGetFederationStats();
-  const { data: nodes, isLoading: nodesLoading } = useListNodes();
+  const { data: nodes, isLoading: nodesLoading } = useNodes();
+  const { data: hourly, isLoading: hourlyLoading } = useStatsHourly();
+  const { isAuthenticated, login } = useAuth();
 
   if (statsLoading) return <LoadingState />;
   if (statsError || !stats) return <ErrorState message="Failed to load federation statistics." />;
@@ -28,12 +27,55 @@ export default function Dashboard() {
     { title: "Storage Allocated", value: formatGb(stats.totalStorageGb), icon: HardDrive, color: "text-amber-400" },
   ];
 
+  const chartData = hourly?.hours ?? [];
+  const hasActivity = chartData.some(h => h.total > 0);
+
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
       <div>
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white mb-2">Federation Overview</h1>
         <p className="text-muted-foreground font-mono">Real-time telemetry and network consensus state.</p>
       </div>
+
+      {/* Onboarding banner for guests */}
+      {!isAuthenticated && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <Card className="border-primary/30 bg-primary/5 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-transparent pointer-events-none" />
+            <CardContent className="flex flex-col sm:flex-row items-start sm:items-center gap-4 py-5 px-6">
+              <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
+                <Rocket className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-semibold text-sm">Welcome to Federated Hosting</p>
+                <p className="text-muted-foreground text-xs mt-0.5">
+                  Sign in to register your own site, upload files, and deploy to the federation network.
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0 flex-wrap">
+                <Button
+                  size="sm"
+                  className="bg-primary text-black hover:bg-primary/90 font-semibold"
+                  onClick={login}
+                >
+                  Get Started
+                  <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+                <a href="https://github.com/The-No-Hands-company/Federated-Hosting" target="_blank" rel="noopener noreferrer">
+                  <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white">
+                    <BookOpen className="w-3.5 h-3.5 mr-1.5" />
+                    Learn More
+                  </Button>
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Hero Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -44,7 +86,7 @@ export default function Dashboard() {
               key={i}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
+              transition={{ delay: i * 0.08 }}
             >
               <Card className="glass-panel overflow-hidden relative group">
                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -63,33 +105,57 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Bandwidth Chart */}
+        {/* Federation Activity Chart */}
         <Card className="glass-panel lg:col-span-2 flex flex-col">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white">
-              <Activity className="w-5 h-5 text-primary" />
-              Network Throughput (24h)
-            </CardTitle>
+          <CardHeader className="flex flex-row items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <Activity className="w-5 h-5 text-primary" />
+                Federation Activity (24h)
+              </CardTitle>
+              <CardDescription className="mt-1 text-xs font-mono">
+                Deployments and federation events per hour
+              </CardDescription>
+            </div>
+            {hourlyLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground mt-1" />}
           </CardHeader>
-          <CardContent className="flex-1 min-h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={mockBandwidthData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorGb" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="time" stroke="rgba(255,255,255,0.3)" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="rgba(255,255,255,0.3)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}GB`} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
-                  itemStyle={{ color: 'hsl(var(--primary))' }}
-                />
-                <Area type="monotone" dataKey="gb" stroke="hsl(var(--primary))" strokeWidth={2} fillOpacity={1} fill="url(#colorGb)" />
-              </AreaChart>
-            </ResponsiveContainer>
+          <CardContent className="flex-1 min-h-[280px]">
+            {!hasActivity && !hourlyLoading ? (
+              <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
+                <Activity className="w-10 h-10 text-muted-foreground/40" />
+                <p className="text-muted-foreground text-sm font-mono">No activity in the last 24 hours</p>
+                <p className="text-muted-foreground/60 text-xs">Activity will appear here as nodes communicate and sites are deployed</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorDeploy" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorEvent" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--secondary))" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="hsl(var(--secondary))" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis dataKey="label" stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} interval={3} />
+                  <YAxis stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                    labelStyle={{ color: 'rgba(255,255,255,0.6)', fontFamily: 'monospace' }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: '11px', fontFamily: 'monospace', paddingTop: '8px' }}
+                    iconType="circle"
+                    iconSize={8}
+                  />
+                  <Area type="monotone" dataKey="deployments" name="Deployments" stroke="hsl(var(--primary))" strokeWidth={2} fillOpacity={1} fill="url(#colorDeploy)" />
+                  <Area type="monotone" dataKey="events" name="Federation Events" stroke="hsl(var(--secondary))" strokeWidth={2} fillOpacity={1} fill="url(#colorEvent)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -97,7 +163,7 @@ export default function Dashboard() {
         <Card className="glass-panel flex flex-col">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-white flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-secondary" />
+              <Server className="w-5 h-5 text-secondary" />
               Node Consensus
             </CardTitle>
             <Link href="/nodes">
@@ -108,7 +174,7 @@ export default function Dashboard() {
             {nodesLoading ? (
               <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {nodes?.slice(0, 6).map(node => (
                   <Link key={node.id} href={`/nodes/${node.id}`}>
                     <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors cursor-pointer group">
@@ -124,6 +190,14 @@ export default function Dashboard() {
                   <div className="text-center p-6 text-muted-foreground text-sm font-mono border border-dashed border-white/10 rounded-xl">
                     No nodes connected to federation.
                   </div>
+                )}
+                {nodes && nodes.length > 0 && (
+                  <Link href="/directory">
+                    <div className="flex items-center justify-center p-2.5 rounded-lg border border-dashed border-white/10 hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer mt-1 group">
+                      <Globe className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary mr-2 transition-colors" />
+                      <span className="text-xs text-muted-foreground group-hover:text-primary font-mono transition-colors">Browse Hosted Sites</span>
+                    </div>
+                  </Link>
                 )}
               </div>
             )}

@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import { db, sitesTable, siteDeploymentsTable, siteFilesTable, nodesTable, federationEventsTable } from "@workspace/db";
-import { eq, and, isNull, count } from "drizzle-orm";
+import { eq, and, isNull, count, sql } from "drizzle-orm";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { signMessage } from "../lib/federation";
 import { asyncHandler, AppError } from "../lib/errors";
@@ -264,6 +264,11 @@ router.get("/sites/serve/:domain/*filePath", asyncHandler(async (req: Request, r
       } else {
         res.end();
       }
+      // Fire-and-forget: increment hit counter (never block the response)
+      db.update(sitesTable)
+        .set({ hitCount: sql`${sitesTable.hitCount} + 1`, lastHitAt: new Date() })
+        .where(eq(sitesTable.id, site.id))
+        .catch(() => { /* ignore tracking errors */ });
       return true;
     } catch (err) {
       if (err instanceof ObjectNotFoundError) return false;
