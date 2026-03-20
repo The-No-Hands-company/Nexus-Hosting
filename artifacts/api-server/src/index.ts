@@ -5,6 +5,8 @@ import { generateKeyPair } from "./lib/federation";
 import { startHealthMonitor } from "./lib/healthMonitor";
 import { startAnalyticsFlusher, stopAnalyticsFlusher } from "./lib/analyticsFlush";
 import { startGossipPusher, stopGossipPusher } from "./routes/gossip";
+import { db, sessionsTable } from "@workspace/db";
+import { lt } from "drizzle-orm";
 import { seedBundledSites } from "./lib/seedBundledSites";
 import logger from "./lib/logger";
 import http from "http";
@@ -90,6 +92,20 @@ ensureLocalNode()
     startHealthMonitor();
     startAnalyticsFlusher();
     startGossipPusher();
+
+    // Session expiry cleanup — purge expired sessions every 6 hours
+    // Prevents unbounded growth of the sessions table
+    const cleanupSessions = async () => {
+      try {
+        const result = await db.delete(sessionsTable).where(lt(sessionsTable.expire, new Date()));
+        logger.debug("[session-cleanup] Expired sessions purged");
+      } catch (err) {
+        logger.warn({ err }, "[session-cleanup] Error purging sessions");
+      }
+    };
+    cleanupSessions(); // run once on startup
+    setInterval(cleanupSessions, 6 * 60 * 60 * 1000); // then every 6 hours
+
     seedBundledSites();
 
     process.on("SIGTERM", () => gracefulShutdown(server, "SIGTERM"));

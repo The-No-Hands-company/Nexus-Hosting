@@ -5,6 +5,7 @@ import { asyncHandler, AppError } from "../lib/errors";
 import { writeLimiter } from "../middleware/rateLimiter";
 import { z } from "zod/v4";
 import crypto from "crypto";
+import { invalidateSiteCache } from "../lib/domainCache";
 
 const router: IRouter = Router();
 
@@ -151,10 +152,13 @@ router.patch("/sites/:id/visibility", writeLimiter, asyncHandler(async (req: Req
     .where(eq(sitesTable.id, siteId))
     .returning({ id: sitesTable.id, visibility: sitesTable.visibility });
 
+  // Invalidate domain cache so the new visibility is reflected immediately
+  invalidateSiteCache(siteId);
+
   res.json(updated);
 }));
 
-/** POST /api/sites/:id/unlock — verify password, issue short-lived unlock cookie */
+/** POST /api/sites/:id/unlock — verify password, issue HMAC-signed unlock cookie */
 router.post("/sites/:id/unlock", asyncHandler(async (req: Request, res: Response) => {
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
@@ -173,9 +177,15 @@ router.post("/sites/:id/unlock", asyncHandler(async (req: Request, res: Response
 
   if (derived !== stored) throw AppError.forbidden("Incorrect password");
 
-  // Issue unlock token as a cookie scoped to the site domain
-  const unlockToken = crypto.randomBytes(16).toString("hex");
-  res.cookie(`site_unlock_${site.id}`, unlockToken, {
+  // Issue HMAC-signed unlock token so the server can verify it without a DB lookup.
+  // Format: base64url(siteId:issuedAt:hmac)
+  const secret = process.env.COOKIE_SECRET ?? process.env.REPL_ID ?? "change-me-in-production";
+  const issuedAt = Math.floor(Date.now() / 1000).toString();
+  const payload = `${site.id}:${issuedAt}`;
+  const hmac = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+  const signedToken = `${Buffer.from(payload).toString("base64url")}.${hmac}`;
+
+  res.cookie(`site_unlock_${site.id}`, signedToken, {
     httpOnly: true, secure: true, sameSite: "lax",
     maxAge: 24 * 60 * 60 * 1000,
   });

@@ -7,7 +7,7 @@
  */
 
 import { db, siteAnalyticsTable, analyticsBufferTable } from "@workspace/db";
-import { lt, sql, eq, and } from "drizzle-orm";
+import { lt, sql, eq, and, inArray } from "drizzle-orm";
 import logger from "./logger";
 import crypto from "crypto";
 
@@ -111,10 +111,10 @@ export async function flushAnalyticsBuffer(): Promise<void> {
         });
     }
 
-    // Bulk delete flushed rows
+    // Bulk delete flushed rows using inArray (safe, no SQL injection risk)
     if (idsToDelete.length > 0) {
       await tx.delete(analyticsBufferTable)
-        .where(sql`${analyticsBufferTable.id} = ANY(ARRAY[${sql.join(idsToDelete.map(id => sql`${id}`), sql`, `)}]::int[])`);
+        .where(inArray(analyticsBufferTable.id, idsToDelete));
     }
   });
 

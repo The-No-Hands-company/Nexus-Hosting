@@ -1,12 +1,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { Readable } from "stream";
 import { db, sitesTable, siteDeploymentsTable, siteFilesTable, nodesTable, federationEventsTable } from "@workspace/db";
 import { eq, and, isNull, count, sql } from "drizzle-orm";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { storage, ObjectNotFoundError } from "../lib/storageProvider";
 import { signMessage } from "../lib/federation";
 import { asyncHandler, AppError } from "../lib/errors";
 import { uploadLimiter } from "../middleware/rateLimiter";
 import { webhookDeploy, webhookDeployFailed } from "../lib/webhooks";
+import { invalidateSiteCache } from "../lib/domainCache";
 import {
   GetSiteFileUploadUrlBody,
   RegisterSiteFileBody,
@@ -15,7 +15,6 @@ import logger from "../lib/logger";
 import path from "path";
 
 const router: IRouter = Router();
-const storage = new ObjectStorageService();
 
 const ALLOWED_CONTENT_TYPES = new Set([
   "text/html", "text/css", "text/javascript", "application/javascript",
@@ -54,8 +53,7 @@ router.post("/sites/:id/files/upload-url", uploadLimiter, asyncHandler(async (re
   const sanitized = sanitizeFilePath(filePath);
   if (!sanitized) throw AppError.badRequest("Invalid file path");
 
-  const uploadUrl = await storage.getObjectEntityUploadURL();
-  const objectPath = storage.normalizeObjectEntityPath(uploadUrl);
+  const { uploadUrl, objectPath } = await storage.getUploadUrl({ contentType: contentType ?? "application/octet-stream", ttlSec: 900 });
 
   res.json({ uploadUrl, objectPath, filePath: sanitized });
 }));
@@ -172,6 +170,9 @@ router.post("/sites/:id/deploy", asyncHandler(async (req: Request, res: Response
     version: deployment.version,
     fileCount: pendingFiles.length,
   });
+
+  // Invalidate host router cache so new files are served immediately
+  invalidateSiteCache(siteId);
 
   // Replicate to federation peers (non-blocking — don't fail the deploy if peers are down)
   const [localNode] = await db.select().from(nodesTable).where(eq(nodesTable.isLocalNode, 1));
@@ -344,20 +345,12 @@ router.get("/sites/serve/:domain/*filePath", asyncHandler(async (req: Request, r
     if (!fileRecord) return false;
 
     try {
-      const file = await storage.getObjectEntityFile(fileRecord.objectPath);
-      const response = await storage.downloadObject(file);
-
       res.setHeader("Content-Type", fileRecord.contentType);
       res.setHeader("Cache-Control", "public, max-age=3600");
       res.setHeader("X-Served-By", "federated-hosting");
       res.setHeader("X-Site-Domain", site.domain);
 
-      if (response.body) {
-        const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-        nodeStream.pipe(res);
-      } else {
-        res.end();
-      }
+      await storage.streamToResponse(fileRecord.objectPath, res);
       // Fire-and-forget: increment hit counter (never block the response)
       db.update(sitesTable)
         .set({ hitCount: sql`${sitesTable.hitCount} + 1`, lastHitAt: new Date() })

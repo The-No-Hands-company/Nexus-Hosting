@@ -37,6 +37,14 @@ router.post("/federation/ping", federationLimiter, asyncHandler(async (req, res)
     throw AppError.badRequest("Missing required fields: nodeDomain, challenge, signature");
   }
 
+  // Reject stale messages — prevents replay attacks
+  if (timestamp) {
+    const messageAge = Math.abs(Date.now() - parseInt(timestamp, 10));
+    if (messageAge > 5 * 60 * 1000) {
+      throw AppError.badRequest("Message timestamp is too old or in the future (max 5 minutes)", "STALE_MESSAGE");
+    }
+  }
+
   const [remoteNode] = await db
     .select()
     .from(nodesTable)
@@ -303,8 +311,7 @@ router.post("/federation/sync", asyncHandler(async (req, res) => {
     return;
   }
 
-  const { ObjectStorageService } = await import("../lib/objectStorage");
-  const storage = new ObjectStorageService();
+  const { storage } = await import("../lib/storageProvider");
   const [localNode] = await db.select().from(nodesTable).where(eq(nodesTable.isLocalNode, 1));
 
   // Upsert the site record locally
@@ -337,8 +344,7 @@ router.post("/federation/sync", asyncHandler(async (req, res) => {
       const buffer = Buffer.from(await fileRes.arrayBuffer());
 
       // Get a new object path in local storage
-      const uploadUrl = await storage.getObjectEntityUploadURL();
-      const objectPath = storage.normalizeObjectEntityPath(uploadUrl);
+      const { uploadUrl, objectPath } = await storage.getUploadUrl({ contentType: remoteFile.contentType, ttlSec: 900 });
 
       // Upload to local object storage via presigned URL
       await fetch(uploadUrl, {
@@ -474,15 +480,13 @@ router.get("/federation/manifest/:siteDomain", asyncHandler(async (req, res) => 
     .from(siteFilesTable)
     .where(eq(siteFilesTable.deploymentId, deployment.id));
 
-  const { ObjectStorageService } = await import("../lib/objectStorage");
-  const storage = new ObjectStorageService();
+  const { storage } = await import("../lib/storageProvider");
 
   // Generate presigned download URLs for each file (valid 1 hour)
   const filesWithUrls = await Promise.all(
     files.map(async (f) => {
       try {
-        const fileEntity = await storage.getObjectEntityFile(f.objectPath);
-        const downloadUrl = await storage.getObjectEntityDownloadURL(fileEntity);
+        const downloadUrl = await storage.getDownloadUrl(f.objectPath, 3600);
         return {
           filePath: f.filePath,
           contentType: f.contentType,

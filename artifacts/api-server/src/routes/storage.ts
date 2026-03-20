@@ -4,11 +4,10 @@ import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { storage, ObjectNotFoundError } from "../lib/storageProvider";
 import { ObjectPermission } from "../lib/objectAcl";
 
 const router: IRouter = Router();
-const objectStorageService = new ObjectStorageService();
 
 /**
  * POST /storage/uploads/request-url
@@ -27,8 +26,7 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
   try {
     const { name, size, contentType } = parsed.data;
 
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+    const { uploadUrl: uploadURL, objectPath } = await storage.getUploadUrl({ contentType: "application/octet-stream", ttlSec: 900 });
 
     res.json(
       RequestUploadUrlResponse.parse({
@@ -54,23 +52,14 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
   try {
     const raw = req.params.filePath;
     const filePath = Array.isArray(raw) ? raw.join("/") : raw;
-    const file = await objectStorageService.searchPublicObject(filePath);
-    if (!file) {
+    // Map public filePath to an object path
+    const objectPath = `/objects/${filePath}`;
+    try {
+      await storage.streamToResponse(objectPath, res);
+    } catch {
       res.status(404).json({ error: "File not found" });
-      return;
     }
-
-    const response = await objectStorageService.downloadObject(file);
-
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
+    return;
   } catch (error) {
     console.error("Error serving public object:", error);
     res.status(500).json({ error: "Failed to serve public object" });
@@ -89,32 +78,9 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
-    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-
-    // --- Protected route example (uncomment when using replit-auth) ---
-    // if (!req.isAuthenticated()) {
-    //   res.status(401).json({ error: "Unauthorized" });
-    //   return;
-    // }
-    // const canAccess = await objectStorageService.canAccessObjectEntity({
-    //   userId: req.user.id,
-    //   objectFile,
-    //   requestedPermission: ObjectPermission.READ,
-    // });
-    // if (!canAccess) {
-    //   res.status(403).json({ error: "Forbidden" });
-    //   return;
-    // }
-
-    const response = await objectStorageService.downloadObject(objectFile);
-
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
+    try {
+      await storage.streamToResponse(objectPath, res);
+    } catch {
       res.end();
     }
   } catch (error) {

@@ -6,6 +6,7 @@ import {
 import { eq, count, sql, desc, gte, and } from "drizzle-orm";
 import { asyncHandler, AppError } from "../lib/errors";
 import { writeLimiter } from "../middleware/rateLimiter";
+import { requireAdmin } from "../middleware/requireAdmin";
 import { z } from "zod/v4";
 import os from "os";
 
@@ -22,7 +23,7 @@ const UpdateNodeSettingsBody = z.object({
 });
 
 /** GET /api/admin/overview — full operator dashboard */
-router.get("/admin/overview", asyncHandler(async (req: Request, res: Response) => {
+router.get("/admin/overview", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const [localNode] = await db.select().from(nodesTable).where(eq(nodesTable.isLocalNode, 1));
@@ -97,7 +98,7 @@ router.get("/admin/overview", asyncHandler(async (req: Request, res: Response) =
 }));
 
 /** PATCH /api/admin/node — update local node settings */
-router.patch("/admin/node", writeLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.patch("/admin/node", requireAdmin, writeLimiter, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const parsed = UpdateNodeSettingsBody.safeParse(req.body);
@@ -125,7 +126,7 @@ router.patch("/admin/node", writeLimiter, asyncHandler(async (req: Request, res:
 }));
 
 /** GET /api/admin/users — list all users (paginated) */
-router.get("/admin/users", asyncHandler(async (req: Request, res: Response) => {
+router.get("/admin/users", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const page  = Math.max(1, parseInt((req.query.page as string) || "1", 10));
@@ -153,7 +154,7 @@ router.get("/admin/users", asyncHandler(async (req: Request, res: Response) => {
 }));
 
 /** GET /api/admin/sites — all sites with owner info */
-router.get("/admin/sites", asyncHandler(async (req: Request, res: Response) => {
+router.get("/admin/sites", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const page  = Math.max(1, parseInt((req.query.page as string) || "1", 10));

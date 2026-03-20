@@ -4,10 +4,9 @@
  */
 import { db, sitesTable, siteFilesTable, siteDeploymentsTable } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
-import { ObjectStorageService } from "./objectStorage";
+import { storage } from "./storageProvider";
 import logger from "./logger";
 
-const storage = new ObjectStorageService();
 
 interface BundledFile {
   filePath: string;
@@ -23,7 +22,7 @@ interface BundledSite {
 }
 
 async function uploadContent(content: string, contentType: string): Promise<string> {
-  const uploadUrl = await storage.getObjectEntityUploadURL();
+  const { uploadUrl, objectPath: newPath } = await storage.getUploadUrl({ contentType, ttlSec: 900 });
 
   const res = await fetch(uploadUrl, {
     method: "PUT",
@@ -33,7 +32,7 @@ async function uploadContent(content: string, contentType: string): Promise<stri
   });
 
   if (!res.ok) throw new Error(`Upload failed: HTTP ${res.status}`);
-  return storage.normalizeObjectEntityPath(uploadUrl);
+  return newPath;
 }
 
 async function seedSite(site: BundledSite): Promise<void> {

@@ -5,6 +5,13 @@ import { webhookNodeOffline, webhookNodeOnline } from "./webhooks";
 
 const HEALTH_CHECK_INTERVAL_MS = 2 * 60 * 1000; // every 2 minutes
 const REQUEST_TIMEOUT_MS = 8_000;
+// Require 3 consecutive failures before marking a node offline.
+// Transient network issues (DNS hiccup, brief connectivity) are normal in a global network.
+const CONSECUTIVE_FAILURES_THRESHOLD = 3;
+
+// In-memory failure counter per node domain — resets to 0 on success.
+// In a multi-instance deployment, move this to Redis.
+const failureCount = new Map<string, number>();
 
 async function checkNode(
   nodeId: number,
@@ -22,6 +29,9 @@ async function checkNode(
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
+    // Reset failure count on success
+    failureCount.delete(domain);
+
     await db
       .update(nodesTable)
       .set({ status: "active", lastSeenAt: new Date() })
@@ -32,9 +42,12 @@ async function checkNode(
       webhookNodeOnline(domain);
     }
   } catch (err: any) {
-    const isNewlyOffline = currentStatus === "active";
+    const failures = (failureCount.get(domain) ?? 0) + 1;
+    failureCount.set(domain, failures);
 
-    if (isNewlyOffline) {
+    logger.debug({ nodeId, domain, failures, threshold: CONSECUTIVE_FAILURES_THRESHOLD }, "[health] Node check failed");
+
+    if (failures >= CONSECUTIVE_FAILURES_THRESHOLD && currentStatus === "active") {
       await db
         .update(nodesTable)
         .set({ status: "inactive" })
@@ -44,14 +57,15 @@ async function checkNode(
         eventType: "node_offline",
         fromNodeDomain: domain,
         toNodeDomain: null,
-        payload: JSON.stringify({ reason: err.message }),
+        payload: JSON.stringify({ reason: err.message, consecutiveFailures: failures }),
         verified: 0,
       });
 
-      logger.info({ nodeId, domain, error: err.message }, "[health] Node went offline");
+      logger.info({ nodeId, domain, error: err.message, failures }, "[health] Node went offline after consecutive failures");
       webhookNodeOffline(domain);
-    } else {
-      logger.debug({ nodeId, domain }, "[health] Node still unreachable");
+      failureCount.delete(domain);
+    } else if (failures < CONSECUTIVE_FAILURES_THRESHOLD) {
+      logger.debug({ nodeId, domain, failures }, "[health] Node unreachable — waiting for threshold");
     }
   }
 }
