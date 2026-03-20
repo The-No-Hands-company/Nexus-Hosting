@@ -125,46 +125,172 @@ pnpm run dev
 
 ## Environment Variables Reference
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | ✅ | — | PostgreSQL connection string |
-| `PORT` | — | `8080` | API server port |
-| `NODE_ENV` | — | `development` | Set to `production` for JSON logs |
-| `PUBLIC_DOMAIN` | ✅ | — | Public hostname (e.g. `node.example.com`) — used as `PUBLIC_DOMAIN` |
-| `NODE_NAME` | — | `Primary Node` | Display name for your node |
-| `NODE_REGION` | — | `self-hosted` | Geographic region label |
-| `OPERATOR_EMAIL` | — | `admin@example.com` | Contact email shown in federation discovery |
-| `STORAGE_CAPACITY_GB` | — | `100` | Advertised storage capacity |
-| `BANDWIDTH_CAPACITY_GB` | — | `1000` | Advertised bandwidth capacity |
-| `DEFAULT_OBJECT_STORAGE_BUCKET_ID` | ✅ | — | Bucket name for site files |
-| `PRIVATE_OBJECT_DIR` | ✅ | `private` | Object path prefix for private uploads |
-| `PUBLIC_OBJECT_SEARCH_PATHS` | ✅ | `public` | Object path prefix for public files |
-| `OBJECT_STORAGE_ENDPOINT` | — | Replit | S3-compatible endpoint URL |
-| `OBJECT_STORAGE_ACCESS_KEY` | — | — | S3 access key |
-| `OBJECT_STORAGE_SECRET_KEY` | — | — | S3 secret key |
-| `ISSUER_URL` | — | — | OIDC issuer URL (required) |
-| `OIDC_CLIENT_ID` | ✅ for OIDC Auth | — | OIDC client ID |
-| `ALLOWED_ORIGINS` | — | `*` | Comma-separated allowed CORS origins |
+All required variables must be set before the server will start. Optional variables have safe defaults.
+
+### Core (required)
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string — `postgresql://user:pass@host:5432/db` |
+| `ISSUER_URL` | OIDC provider issuer URL — throws at startup if missing. See [Auth setup](#auth) below. |
+| `OIDC_CLIENT_ID` | OIDC client ID — throws at startup if missing. |
+| `COOKIE_SECRET` | Random 32+ char secret for HMAC-signed unlock cookies. **Throws at startup in production if missing.** Generate with `openssl rand -hex 32` |
+| `PUBLIC_DOMAIN` | Public hostname where this node is reachable — e.g. `node.example.com` |
+| `OBJECT_STORAGE_ENDPOINT` | S3-compatible endpoint URL — e.g. `https://s3.amazonaws.com`, `http://minio:9000`, `https://<id>.r2.cloudflarestorage.com` |
+| `OBJECT_STORAGE_ACCESS_KEY` | S3 access key ID |
+| `OBJECT_STORAGE_SECRET_KEY` | S3 secret access key |
+| `DEFAULT_OBJECT_STORAGE_BUCKET_ID` | Bucket name for site files |
+
+### Node identity
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NODE_NAME` | `Primary Node` | Display name shown in federation directory |
+| `NODE_REGION` | `self-hosted` | Geographic region label (e.g. `ap-southeast-1`) |
+| `OPERATOR_NAME` | `Node Operator` | Your name or organisation |
+| `OPERATOR_EMAIL` | `admin@example.com` | Contact email shown in federation discovery |
+| `STORAGE_CAPACITY_GB` | `100` | Advertised storage capacity |
+| `BANDWIDTH_CAPACITY_GB` | `1000` | Advertised bandwidth capacity |
+
+### Server
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8080` | API server listening port |
+| `NODE_ENV` | `development` | Set to `production` for JSON structured logs |
+| `ALLOWED_ORIGINS` | `*` | Comma-separated allowed CORS origins |
+| `PRIVATE_OBJECT_DIR` | `private` | Object storage prefix for private uploads |
+| `PUBLIC_OBJECT_SEARCH_PATHS` | `public` | Object storage prefix for public files |
+
+### Redis (strongly recommended in production)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_URL` | — | Redis connection URL — `redis://localhost:6379`. Without this, rate limiting is per-instance in-memory and sessions are not shared across instances. A warning is logged in production. |
+
+### Email (optional but highly recommended)
+
+Without SMTP, invitations, deploy notifications, certificate expiry warnings, and form submission alerts will not be sent. Everything else works normally.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SMTP_HOST` | — | SMTP server hostname. Leave blank to disable email entirely. |
+| `SMTP_PORT` | `587` | SMTP port (use `465` for TLS) |
+| `SMTP_SECURE` | `false` | Set to `true` for port 465 TLS |
+| `SMTP_USER` | — | SMTP username / login |
+| `SMTP_PASS` | — | SMTP password or API key |
+| `EMAIL_FROM` | `noreply@<PUBLIC_DOMAIN>` | From address for outgoing mail |
+| `EMAIL_FROM_NAME` | `FedHost` | From display name |
+
+**Provider examples:**
+```bash
+# Resend
+SMTP_HOST=smtp.resend.com  SMTP_PORT=587  SMTP_USER=resend  SMTP_PASS=re_xxx
+
+# Postmark
+SMTP_HOST=smtp.postmarkapp.com  SMTP_PORT=587  SMTP_USER=<server-token>  SMTP_PASS=<server-token>
+
+# AWS SES (us-east-1)
+SMTP_HOST=email-smtp.us-east-1.amazonaws.com  SMTP_PORT=587
+SMTP_USER=<access-key-id>  SMTP_PASS=<smtp-password>
+
+# SendGrid
+SMTP_HOST=smtp.sendgrid.net  SMTP_PORT=587  SMTP_USER=apikey  SMTP_PASS=<api-key>
+```
+
+### TLS / ACME (optional — use Caddy instead for most setups)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ACME_ENABLED` | `false` | Set to `true` to enable built-in Let's Encrypt provisioning |
+| `ACME_EMAIL` | — | Contact email for Let's Encrypt account (required if ACME_ENABLED) |
+| `ACME_CERT_DIR` | `/etc/certs` | Directory where certificates are stored |
+| `ACME_STAGING` | `false` | Use Let's Encrypt staging (rate-limit free) — set `true` during testing |
+| `ACME_CHALLENGE_TYPE` | `http` | `http` for HTTP-01, `dns` for DNS-01 (no port 80 needed) |
+| `ACME_DNS_PROPAGATION_WAIT` | `30000` | Milliseconds to wait for DNS-01 propagation |
+
+See [docs/TLS.md](TLS.md) for the full guide including Caddy, certbot, and DNS-01 setup.
+
+### Observability
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `METRICS_TOKEN` | — | Bearer token protecting `GET /metrics`. If unset, metrics are open (bind to localhost recommended). |
+| `ENABLE_SITE_HEALTH_CHECKS` | `false` | Set to `true` to check hosted site reachability every 10 minutes |
+| `SITE_HEALTH_CHECK_INTERVAL_MS` | `600000` | Health check interval in milliseconds |
+
+### Data retention
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANALYTICS_RETENTION_DAYS` | `90` | Delete hourly analytics rows older than this |
+| `FORM_RETENTION_DAYS` | `365` | Delete form submissions older than this |
+| `AUDIT_LOG_RETENTION_DAYS` | `365` | Delete admin audit log entries older than this |
 
 ---
 
-## Replacing legacy Services
+## Auth
 
-The codebase was originally built . Every legacy integration is isolated and swappable.
+FedHost uses **OpenID Connect (OIDC)** for authentication. `ISSUER_URL` and `OIDC_CLIENT_ID` are both **required** — the server throws at startup if either is missing.
 
-### Auth
+The OIDC client must support **Authorization Code flow with PKCE** and the `offline_access` scope. Standard compliant providers work without any code changes.
 
-OIDC Auth uses standard **OpenID Connect (OIDC)**. To replace it:
+### Option 1 — Authentik (self-hosted, recommended)
 
-1. Set up any OIDC provider (Keycloak, Auth0, Okta, Authentik, etc.)
-2. Update two env vars:
-   ```env
-   ISSUER_URL=https://auth.yourdomain.com/realms/fedhost
-   OIDC_CLIENT_ID=your-oidc-client-id
-   ```
-3. The `artifacts/api-server/src/lib/auth.ts` file does standard OIDC discovery — no code change needed as long as your provider supports PKCE + `offline_access`.
+```bash
+# Install Authentik (Docker)
+docker compose -f authentik-docker-compose.yml up -d
 
-For a self-contained option, **Authentik** or **Keycloak** both work out of the box.
+# Create an application:
+# 1. Applications → Providers → Create → OAuth2/OpenID Provider
+# 2. Name: fedhost
+# 3. Client type: Public (PKCE)
+# 4. Redirect URIs: https://your-node.example.com/api/auth/callback
+# 5. Scopes: openid profile email offline_access
+# 6. Note down the Issuer URL and Client ID
+```
+
+```env
+ISSUER_URL=https://auth.yourdomain.com/application/o/fedhost/
+OIDC_CLIENT_ID=your-client-id-from-authentik
+```
+
+### Option 2 — Keycloak (self-hosted)
+
+```bash
+# In your Keycloak realm:
+# 1. Clients → Create → Client ID: fedhost
+# 2. Client type: Public
+# 3. Valid redirect URIs: https://your-node.example.com/api/auth/callback
+# 4. Standard flow: Enabled
+```
+
+```env
+ISSUER_URL=https://auth.yourdomain.com/realms/your-realm
+OIDC_CLIENT_ID=fedhost
+```
+
+### Option 3 — Auth0
+
+```bash
+# In Auth0 dashboard:
+# 1. Applications → Create → Single Page Application
+# 2. Allowed Callback URLs: https://your-node.example.com/api/auth/callback
+# 3. Allowed Web Origins: https://your-node.example.com
+```
+
+```env
+ISSUER_URL=https://your-tenant.us.auth0.com/
+OIDC_CLIENT_ID=your-auth0-client-id
+```
+
+### Option 4 — Any standards-compliant provider
+
+Any provider with a `/.well-known/openid-configuration` discovery document works: Dex, Okta, Azure AD, Google, GitHub (via an OIDC proxy like Dex), Zitadel, etc.
+
+The redirect URI to register is always: `https://<PUBLIC_DOMAIN>/api/auth/callback`
+
+
 
 ### Object Storage
 

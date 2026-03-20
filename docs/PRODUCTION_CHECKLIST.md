@@ -20,20 +20,50 @@ This checklist is for node operators preparing a Federated Hosting node for publ
 
 ## Environment Variables
 
-- [ ] `DATABASE_URL` — PostgreSQL connection string with a dedicated application user (not superuser)
-- [ ] `DEFAULT_OBJECT_STORAGE_BUCKET_ID` — bucket created and accessible
-- [ ] `PRIVATE_OBJECT_DIR` and `PUBLIC_OBJECT_SEARCH_PATHS` — set to match your bucket structure
-- [ ] `NODE_ENV=production` — enables JSON logs, disables stack traces in error responses
-- [ ] `ISSUER_URL` — points to your OIDC provider (Authentik, Keycloak, Auth0, Dex, etc.)
-- [ ] `OIDC_CLIENT_ID` — OIDC client ID registered with your provider
-- [ ] `PUBLIC_DOMAIN` — your public hostname (e.g. `node.yourdomain.com`)
-- [ ] `NODE_NAME`, `NODE_REGION`, `OPERATOR_EMAIL` — visible in federation discovery
-- [ ] `ALLOWED_ORIGINS` — restricted to your actual frontend domain(s)
-- [ ] `WEBHOOK_URLS` — configured for node event notifications (optional but recommended)
+### Required — server will not start without these
 
-See `.env.example` for full documentation of every variable.
+- [ ] `DATABASE_URL` — PostgreSQL connection string with a dedicated application user (not superuser)
+- [ ] `ISSUER_URL` — OIDC provider issuer URL. **Server throws at startup if missing.** See `docs/SELF_HOSTING.md#auth` for provider setup (Authentik, Keycloak, Auth0).
+- [ ] `OIDC_CLIENT_ID` — OIDC client ID. **Server throws at startup if missing.**
+- [ ] `COOKIE_SECRET` — Random 32+ char secret for HMAC-signed unlock cookies. **Server throws at startup if missing.** Generate: `openssl rand -hex 32`
+- [ ] `OBJECT_STORAGE_ENDPOINT` — S3-compatible endpoint URL (Cloudflare R2, AWS S3, MinIO)
+- [ ] `OBJECT_STORAGE_ACCESS_KEY` + `OBJECT_STORAGE_SECRET_KEY` — S3 credentials
+- [ ] `DEFAULT_OBJECT_STORAGE_BUCKET_ID` — bucket name for site files (must exist before first boot)
+- [ ] `PUBLIC_DOMAIN` — public hostname (e.g. `node.yourdomain.com`) — used in federation discovery and email links
+
+### Required for correct behaviour
+
+- [ ] `NODE_ENV=production` — enables JSON structured logs, disables stack traces in API error responses
+- [ ] `REDIS_URL` — Redis connection string. Without this, rate limiting is per-instance in-memory and sessions are not shared across multiple API server instances. A warning is logged at startup.
+- [ ] `PRIVATE_OBJECT_DIR` and `PUBLIC_OBJECT_SEARCH_PATHS` — object storage path prefixes
+
+### Node identity (shown publicly in federation directory)
+
+- [ ] `NODE_NAME`, `NODE_REGION`, `OPERATOR_NAME`, `OPERATOR_EMAIL`
+- [ ] `STORAGE_CAPACITY_GB`, `BANDWIDTH_CAPACITY_GB` — your advertised limits
+- [ ] `ALLOWED_ORIGINS` — restrict to your actual frontend domain(s), not `*`
+
+### Email notifications (strongly recommended)
+
+Without SMTP: invitations, deploy success/fail emails, certificate expiry warnings, and form submission alerts will not send.
+
+- [ ] `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` — any SMTP provider (Resend, Postmark, SES, SendGrid)
+- [ ] `EMAIL_FROM` — `noreply@yourdomain.com`
+
+### Security hardening
+
+- [ ] `METRICS_TOKEN` — random string protecting `GET /metrics` from public access. Without this, Prometheus metrics are open to anyone.
+- [ ] `ACME_EMAIL` — required if `ACME_ENABLED=true` (Let's Encrypt account email)
+
+### Optional but valuable
+
+- [ ] `ENABLE_SITE_HEALTH_CHECKS=true` — periodic reachability checks on hosted sites
+- [ ] `ANALYTICS_RETENTION_DAYS`, `FORM_RETENTION_DAYS`, `AUDIT_LOG_RETENTION_DAYS` — data retention windows
+
+See `.env.example` for every variable with examples and defaults.
 
 ---
+
 
 ## Database
 

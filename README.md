@@ -23,14 +23,43 @@ Independent operators run nodes. Each node has an **Ed25519 cryptographic identi
 
 ---
 
-## Quick Start
+## Running a node (operators)
+
+**[→ Full operator guide: docs/SELF_HOSTING.md](./docs/SELF_HOSTING.md)**
+
+The short version:
+
+```bash
+git clone https://github.com/The-No-Hands-company/Federated-Hosting.git
+cd Federated-Hosting
+cp .env.example .env
+# Edit .env — the required vars are: ISSUER_URL, OIDC_CLIENT_ID, COOKIE_SECRET,
+# DATABASE_URL, PUBLIC_DOMAIN, and your S3 credentials
+docker compose up -d
+```
+
+**Required configuration before the server will start:**
+
+| Variable | How to get it |
+|---|---|
+| `ISSUER_URL` + `OIDC_CLIENT_ID` | Set up Authentik, Keycloak, or Auth0. See [SELF_HOSTING.md → Auth](./docs/SELF_HOSTING.md#auth) |
+| `COOKIE_SECRET` | `openssl rand -hex 32` |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `PUBLIC_DOMAIN` | Your node's public hostname |
+| `OBJECT_STORAGE_ENDPOINT` + credentials | AWS S3, Cloudflare R2, MinIO, or Backblaze B2 |
+
+See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for the complete environment variable reference, and [docs/PRODUCTION_CHECKLIST.md](./docs/PRODUCTION_CHECKLIST.md) before going live.
+
+---
+
+## Quick Start (development)
 
 ### Prerequisites
 
 - [Node.js 24+](https://nodejs.org/)
 - [pnpm 10+](https://pnpm.io/)
-- PostgreSQL database (connection string in `DATABASE_URL`)
-- S3-compatible object storage (or S3-compatible store)
+- PostgreSQL database
+- S3-compatible object storage (MinIO via Docker Compose works)
 
 ### Install
 
@@ -40,32 +69,31 @@ cd Federated-Hosting
 pnpm install
 ```
 
-### Environment Variables
+### Minimum environment for development
 
 ```env
-DATABASE_URL=postgresql://user:password@host:5432/dbname
-DEFAULT_OBJECT_STORAGE_BUCKET_ID=your-bucket-id
-PRIVATE_OBJECT_DIR=private
-PUBLIC_OBJECT_SEARCH_PATHS=public
+DATABASE_URL=postgresql://user:password@localhost:5432/fedhost
+ISSUER_URL=https://your-oidc-provider/
+OIDC_CLIENT_ID=your-client-id
+COOKIE_SECRET=dev-only-change-in-production
+PUBLIC_DOMAIN=localhost:8080
+OBJECT_STORAGE_ENDPOINT=http://localhost:9000
+OBJECT_STORAGE_ACCESS_KEY=minioadmin
+OBJECT_STORAGE_SECRET_KEY=minioadmin
+DEFAULT_OBJECT_STORAGE_BUCKET_ID=fedhost-sites
 NODE_ENV=development
 ```
 
 ### Database Setup
 
 ```bash
-# Push schema to database (creates all tables and indexes)
-pnpm --filter @workspace/db run push
+pnpm --filter @workspace/db run migrate
 ```
 
 ### Development
 
 ```bash
-# Start everything concurrently
-pnpm run dev
-
-# Or start individually:
-pnpm --filter @workspace/api-server run dev     # API on :8080
-pnpm --filter @workspace/federated-hosting run dev  # Frontend on :25231
+pnpm run dev  # starts API on :8080 and frontend on :25231
 ```
 
 ### Build
