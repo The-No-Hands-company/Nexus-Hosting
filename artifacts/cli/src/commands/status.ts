@@ -129,4 +129,32 @@ export const statusCommand = new Command("status")
       console.log(`  ${chalk.dim("Uptime:")}      ${capacity.uptimePercent.toFixed(1)}%`);
       console.log();
     }
+
+    // Show authenticated user's sites if logged in
+    if (cfg.token) {
+      try {
+        const sites = await apiFetch<{ data: Array<{ id: number; name: string; domain: string; status: string; storageUsedMb: number }> }>(
+          "/sites?limit=5"
+        );
+        if (sites.data?.length) {
+          console.log(chalk.bold("  Your Sites"));
+          for (const s of sites.data) {
+            const icon = s.status === "active" ? chalk.green("●") : chalk.dim("○");
+            console.log(`  ${icon} ${chalk.white(s.domain.padEnd(35))} ${chalk.dim(`${s.storageUsedMb.toFixed(1)} MB`)}`);
+
+            try {
+              const deps = await apiFetch<{ data: Array<{ version: number; environment: string; deployedAt: string; fileCount: number }> }>(
+                `/sites/${s.id}/deployments?limit=1`
+              );
+              const d = deps.data?.[0];
+              if (d) {
+                const envLabel = d.environment && d.environment !== "production" ? chalk.yellow(` [${d.environment}]`) : "";
+                console.log(`    ${chalk.dim(`v${d.version}${envLabel} · ${d.fileCount} files · ${new Date(d.deployedAt).toLocaleDateString()}`)}`);
+              }
+            } catch { /* skip */ }
+          }
+          console.log();
+        }
+      } catch { /* skip if not authenticated */ }
+    }
   });

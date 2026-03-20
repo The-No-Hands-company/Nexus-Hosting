@@ -18,11 +18,12 @@
  */
 
 export interface CachedSite {
-  siteId: number;
-  domain: string;
-  visibility: "public" | "private" | "password";
-  passwordHash: string | null;
-  cachedAt: number;
+  siteId:        number;
+  domain:        string;
+  visibility:    "public" | "private" | "password";
+  passwordHash:  string | null;
+  unlockMessage: string | null;
+  cachedAt:      number;
 }
 
 export interface CachedFile {

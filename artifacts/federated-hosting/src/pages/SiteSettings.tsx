@@ -147,7 +147,8 @@ export default function SiteSettings() {
   const qc = useQueryClient();
   const { isAuthenticated } = useAuth();
 
-  const [password, setPassword] = useState("");
+  const [password, setPassword]           = useState("");
+  const [unlockMessage, setUnlockMessage] = useState("");
   const [newRedirect, setNewRedirect] = useState({ src: "", dest: "", status: 301 });
   const [newHeader, setNewHeader] = useState({ path: "/*", name: "", value: "" });
 
@@ -174,7 +175,7 @@ export default function SiteSettings() {
       const r = await fetch(`${BASE}/api/sites/${siteId}/visibility`, {
         method: "PATCH", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visibility, ...(password ? { password } : {}) }),
+        body: JSON.stringify({ visibility, ...(password ? { password } : {}), ...(unlockMessage ? { unlockMessage } : {}) }),
       });
       if (!r.ok) { const e = await r.json() as any; throw new Error(e.message ?? "Failed"); }
       return r.json();
@@ -293,6 +294,17 @@ export default function SiteSettings() {
                     disabled={!password || visibilityMutation.isPending}
                     className="shrink-0">
                     <Lock className="w-4 h-4 mr-1.5" />Set
+                  </Button>
+                </div>
+                <Label className="text-sm text-muted-foreground mt-2 block">Custom message on password gate (optional)</Label>
+                <div className="flex gap-2">
+                  <Input placeholder="This site is members only…" value={unlockMessage}
+                    onChange={e => setUnlockMessage(e.target.value)} maxLength={200}
+                    className="bg-muted/20 border-white/8 focus:border-primary/40" />
+                  <Button variant="outline" onClick={() => visibilityMutation.mutate({ visibility: "password" })}
+                    disabled={visibilityMutation.isPending}
+                    className="shrink-0 border-white/10">
+                    Save
                   </Button>
                 </div>
               </div>

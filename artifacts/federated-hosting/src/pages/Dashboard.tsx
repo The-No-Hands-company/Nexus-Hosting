@@ -1,17 +1,107 @@
 import { useGetFederationStats } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Server, Globe, Activity, HardDrive, ArrowUpRight, Loader2, Rocket, ChevronRight, BookOpen } from "lucide-react";
+import { Server, Globe, Activity, HardDrive, ArrowUpRight, Loader2, Rocket, ChevronRight, BookOpen, BarChart2, GitBranch, Settings, Zap } from "lucide-react";
 import { LoadingState, ErrorState, StatusBadge } from "@/components/shared";
 import { formatGb, formatPercent } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useAuth } from "@workspace/auth-web";
+import { useQuery } from "@tanstack/react-query";
 import { useStatsHourly, useNodes } from "@/lib/apiHooks";
 import { useState } from "react";
 import { OnboardingBanner, OnboardingModal, useOnboarding } from "@/components/Onboarding";
 import { useTranslation } from "react-i18next";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+interface MySite {
+  id: number; name: string; domain: string; status: string;
+  hitCount: number; storageUsedMb: number; siteType: string;
+}
+
+interface Deployment {
+  id: number; version: number; status: string; fileCount: number;
+  totalSizeMb: number; deployedAt: string; environment: string;
+  site?: { name: string; domain: string };
+}
+
+function PersonalDashboard() {
+  const { user } = useAuth();
+
+  const { data: mySites } = useQuery<{ data: MySite[] }>({
+    queryKey: ["dashboard-my-sites"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/sites?ownerId=${(user as any)?.id}&limit=5`, { credentials: "include" });
+      return r.ok ? r.json() : { data: [] };
+    },
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+
+  const sites = mySites?.data ?? [];
+  if (sites.length === 0) return null;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+      className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-white">Your Sites</h2>
+        <Link href="/my-sites">
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-white gap-1">
+            View all <ChevronRight className="w-3.5 h-3.5" />
+          </Button>
+        </Link>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {sites.map(site => (
+          <Card key={site.id} className="border-white/5 hover:border-white/10 transition-colors group">
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div className="min-w-0">
+                  <p className="text-white font-semibold text-sm truncate">{site.name}</p>
+                  <p className="text-primary text-xs font-mono truncate">{site.domain}</p>
+                </div>
+                <StatusBadge status={site.status} />
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3">
+                <span className="flex items-center gap-1">
+                  <Zap className="w-3 h-3" />{site.hitCount.toLocaleString()} hits
+                </span>
+                <span className="flex items-center gap-1">
+                  <HardDrive className="w-3 h-3" />{site.storageUsedMb.toFixed(1)} MB
+                </span>
+              </div>
+              <div className="flex gap-1.5">
+                <Link href={`/deploy/${site.id}`} className="flex-1">
+                  <Button size="sm" variant="outline" className="w-full border-white/8 text-xs h-7 text-muted-foreground hover:text-white gap-1">
+                    <Rocket className="w-3 h-3" />Deploy
+                  </Button>
+                </Link>
+                <Link href={`/analytics/${site.id}`}>
+                  <Button size="sm" variant="outline" className="border-white/8 h-7 px-2 text-muted-foreground hover:text-white">
+                    <BarChart2 className="w-3 h-3" />
+                  </Button>
+                </Link>
+                <Link href={`/sites/${site.id}/builds`}>
+                  <Button size="sm" variant="outline" className="border-white/8 h-7 px-2 text-muted-foreground hover:text-white">
+                    <GitBranch className="w-3 h-3" />
+                  </Button>
+                </Link>
+                <Link href={`/sites/${site.id}/settings`}>
+                  <Button size="sm" variant="outline" className="border-white/8 h-7 px-2 text-muted-foreground hover:text-white">
+                    <Settings className="w-3 h-3" />
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading, error: statsError } = useGetFederationStats();
@@ -202,6 +292,9 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Personal section: only shown when authenticated ── */}
+      {isAuthenticated && <PersonalDashboard />}
     </div>
   );
 }

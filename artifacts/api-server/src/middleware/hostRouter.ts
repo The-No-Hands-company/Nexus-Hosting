@@ -60,10 +60,10 @@ function verifyUnlockCookie(cookieValue: string | undefined, siteId: number): bo
   }
 }
 
-function renderPasswordGate(siteId: number, domain: string): string {
+function renderPasswordGate(siteId: number, domain: string, message?: string | null): string {
   return getPasswordGateHtml().replace(
     "<body>",
-    `<body data-site-id="${siteId}" data-domain="${domain.replace(/"/g, "&quot;")}">`
+    `<body data-site-id="${siteId}" data-domain="${domain.replace(/"/g, "&quot;")}"${message ? ` data-message="${message.replace(/"/g, "&quot;")}"` : ""}>`
   );
 }
 
@@ -192,7 +192,11 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
   const cached = getCachedSite(host);
   if (cached) {
     // Reconstruct minimal site object from cache
-    site = { id: cached.siteId, domain: cached.domain, visibility: cached.visibility, passwordHash: cached.passwordHash } as typeof sitesTable.$inferSelect;
+    site = {
+      id: cached.siteId, domain: cached.domain,
+      visibility: cached.visibility, passwordHash: cached.passwordHash,
+      unlockMessage: cached.unlockMessage,
+    } as typeof sitesTable.$inferSelect;
   } else {
     // Cache miss — query DB
     const [byPrimary] = await db.select().from(sitesTable).where(eq(sitesTable.domain, host));
@@ -216,6 +220,7 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
         domain: host,
         visibility: (site.visibility as "public" | "private" | "password") ?? "public",
         passwordHash: site.passwordHash ?? null,
+        unlockMessage: (site as any).unlockMessage ?? null,
       });
     }
   }
@@ -228,7 +233,7 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
   }
 
   if (site.visibility === "password" && !verifyUnlockCookie(req.cookies?.[`site_unlock_${site.id}`], site.id)) {
-    res.status(401).send(renderPasswordGate(site.id, host));
+    res.status(401).send(renderPasswordGate(site.id, host, (site as any).unlockMessage));
     return;
   }
 

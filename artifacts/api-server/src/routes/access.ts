@@ -28,8 +28,9 @@ const AddMemberBody = z.object({
 });
 
 const UpdateVisibilityBody = z.object({
-  visibility: z.enum(["public", "private", "password"]),
-  password: z.string().min(6).max(128).optional(),
+  visibility:    z.enum(["public", "private", "password"]),
+  password:      z.string().min(6).max(128).optional(),
+  unlockMessage: z.string().max(200).optional(), // custom message shown on password gate
 });
 
 async function requireSiteOwner(req: Request, siteId: number) {
@@ -161,7 +162,7 @@ router.patch("/sites/:id/visibility", writeLimiter, asyncHandler(async (req: Req
 
   const [updated] = await db
     .update(sitesTable)
-    .set({ visibility, passwordHash })
+    .set({ visibility, passwordHash, unlockMessage: parsed.data.unlockMessage ?? null })
     .where(eq(sitesTable.id, siteId))
     .returning({ id: sitesTable.id, visibility: sitesTable.visibility });
 
