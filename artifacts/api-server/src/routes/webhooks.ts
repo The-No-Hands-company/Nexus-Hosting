@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { asyncHandler, AppError } from "../lib/errors";
 import { deliverWebhook } from "../lib/webhooks";
+import { webhookLimiter } from "../middleware/rateLimiter";
 
 const router: IRouter = Router();
 
@@ -48,7 +49,7 @@ router.get("/webhooks/config", asyncHandler(async (req: Request, res: Response) 
  * POST /api/webhooks/test
  * Send a test payload to all configured webhook URLs.
  */
-router.post("/webhooks/test", asyncHandler(async (req: Request, res: Response) => {
+router.post("/webhooks/test", webhookLimiter, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const raw = process.env.WEBHOOK_URLS ?? "";

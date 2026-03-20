@@ -13,6 +13,7 @@ import {
 import { serializeDates } from "../lib/serialize";
 import { asyncHandler, AppError } from "../lib/errors";
 import { parsePagination, buildPaginatedResponse } from "../lib/pagination";
+import { writeLimiter } from "../middleware/rateLimiter";
 
 const router: IRouter = Router();
 
@@ -66,7 +67,7 @@ router.get("/sites", asyncHandler(async (req, res) => {
   res.json(buildPaginatedResponse(serializeDates(sites), Number(total), { limit, offset, page }));
 }));
 
-router.post("/sites", asyncHandler(async (req, res) => {
+router.post("/sites", writeLimiter, asyncHandler(async (req, res) => {
   const parsed = CreateSiteBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest(parsed.error.message);
 
@@ -97,12 +98,23 @@ router.get("/sites/:id", asyncHandler(async (req, res) => {
   res.json(GetSiteResponse.parse(serializeDates(site)));
 }));
 
-router.patch("/sites/:id", asyncHandler(async (req, res) => {
+router.patch("/sites/:id", writeLimiter, asyncHandler(async (req, res) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
   const params = UpdateSiteParams.safeParse(req.params);
   if (!params.success) throw AppError.badRequest(params.error.message);
 
   const parsed = UpdateSiteBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest(parsed.error.message);
+
+  // Fetch first to verify ownership
+  const [existing] = await db
+    .select({ id: sitesTable.id, ownerId: sitesTable.ownerId })
+    .from(sitesTable)
+    .where(eq(sitesTable.id, params.data.id));
+
+  if (!existing) throw AppError.notFound(`Site ${params.data.id} not found`);
+  if (existing.ownerId !== req.user.id) throw AppError.forbidden("Only the site owner can update this site");
 
   const [updated] = await db
     .update(sitesTable)
@@ -121,16 +133,22 @@ router.patch("/sites/:id", asyncHandler(async (req, res) => {
   res.json(UpdateSiteResponse.parse(serializeDates(joined)));
 }));
 
-router.delete("/sites/:id", asyncHandler(async (req, res) => {
+router.delete("/sites/:id", writeLimiter, asyncHandler(async (req, res) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
   const params = DeleteSiteParams.safeParse(req.params);
   if (!params.success) throw AppError.badRequest(params.error.message);
 
-  const [site] = await db
-    .delete(sitesTable)
-    .where(eq(sitesTable.id, params.data.id))
-    .returning();
+  // Fetch first to verify ownership
+  const [existing] = await db
+    .select({ id: sitesTable.id, ownerId: sitesTable.ownerId })
+    .from(sitesTable)
+    .where(eq(sitesTable.id, params.data.id));
 
-  if (!site) throw AppError.notFound(`Site ${params.data.id} not found`);
+  if (!existing) throw AppError.notFound(`Site ${params.data.id} not found`);
+  if (existing.ownerId !== req.user.id) throw AppError.forbidden("Only the site owner can delete this site");
+
+  await db.delete(sitesTable).where(eq(sitesTable.id, params.data.id));
   res.sendStatus(204);
 }));
 

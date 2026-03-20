@@ -114,7 +114,7 @@ Auto-seeded demo sites ship with every node on first boot.
 |---|---|---|
 | Node marketplace / directory | ✅ | /network page — searchable node grid, bootstrap endpoint, status |
 | Let's Encrypt TLS automation | ✅ | HTTP-01 challenge serving, /provision-tls, Caddy/certbot instructions |
-| Geographic routing | 🔮 | Serve from closest node |
+| Geographic routing | ✅ | Region inference from headers, closest-node 302 redirect, ENABLE_GEO_ROUTING flag |
 | Paid plans / node sponsorship | 🔮 | Revenue model for operators |
 | Public API docs site | ✅ | /api-docs page — endpoint browser, auth guide, code examples |
 
@@ -127,8 +127,8 @@ Auto-seeded demo sites ship with every node on first boot.
 | E2E test suite (Playwright) | High |
 | OpenAPI spec kept in sync | Medium |
 | @fedhost/cli npm publish | Medium |
-| Rate limiting on all write endpoints | Medium |
-| Same-domain conflict resolution across nodes | Medium |
+| Rate limiting on all write endpoints | ✅ | writeLimiter, tokenLimiter, webhookLimiter applied globally |
+| Same-domain conflict resolution across nodes | ✅ | Ed25519 trust chain, first-write-wins, pubkey tiebreaker |
 
 ---
 

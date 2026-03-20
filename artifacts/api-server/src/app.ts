@@ -11,6 +11,7 @@ import { globalErrorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { globalLimiter, speedLimiter } from "./middleware/rateLimiter";
 import router from "./routes";
 import { hostRouter } from "./middleware/hostRouter";
+import { geoRoutingMiddleware } from "./lib/geoRouting";
 import { db, nodesTable, siteDeploymentsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { stripPemHeaders } from "./lib/federation";
@@ -101,6 +102,9 @@ app.use(authMiddleware);
 
 // ── Token-based auth (for CLI / API clients) ──────────────────────────────────
 app.use(tokenAuthMiddleware);
+
+// ── Geographic routing (closest-node redirect) ────────────────────────────────
+app.use(geoRoutingMiddleware);
 
 // ── Phase 3: Host-header site routing ─────────────────────────────────────────
 app.use(hostRouter);

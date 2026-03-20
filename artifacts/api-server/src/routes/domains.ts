@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, customDomainsTable, sitesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { asyncHandler, AppError } from "../lib/errors";
+import { writeLimiter } from "../middleware/rateLimiter";
 import { z } from "zod/v4";
 import dns from "dns/promises";
 import crypto from "crypto";
@@ -32,7 +33,7 @@ router.get("/sites/:id/domains", asyncHandler(async (req: Request, res: Response
 }));
 
 /** POST /api/sites/:id/domains — add a custom domain */
-router.post("/sites/:id/domains", asyncHandler(async (req: Request, res: Response) => {
+router.post("/sites/:id/domains", writeLimiter, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
@@ -122,7 +123,7 @@ router.post("/domains/:id/verify", asyncHandler(async (req: Request, res: Respon
 }));
 
 /** DELETE /api/domains/:id */
-router.delete("/domains/:id", asyncHandler(async (req: Request, res: Response) => {
+router.delete("/domains/:id", writeLimiter, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
   const id = parseInt(req.params.id as string, 10);
   if (Number.isNaN(id)) throw AppError.badRequest("Invalid domain ID");

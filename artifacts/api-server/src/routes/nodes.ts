@@ -14,6 +14,7 @@ import { serializeDates } from "../lib/serialize";
 import { asyncHandler, AppError } from "../lib/errors";
 import { parsePagination, buildPaginatedResponse } from "../lib/pagination";
 import { generateKeyPair } from "../lib/federation";
+import { writeLimiter } from "../middleware/rateLimiter";
 
 const router: IRouter = Router();
 
@@ -45,7 +46,9 @@ router.get("/nodes", asyncHandler(async (req, res) => {
   res.json(buildPaginatedResponse(serializeDates(safeNodes), Number(total), { limit, offset, page }));
 }));
 
-router.post("/nodes", asyncHandler(async (req, res) => {
+router.post("/nodes", writeLimiter, asyncHandler(async (req, res) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
   const parsed = CreateNodeBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest(parsed.error.message);
 
@@ -76,7 +79,9 @@ router.get("/nodes/:id", asyncHandler(async (req, res) => {
   res.json(GetNodeResponse.parse(serializeDates(safeNode)));
 }));
 
-router.patch("/nodes/:id", asyncHandler(async (req, res) => {
+router.patch("/nodes/:id", writeLimiter, asyncHandler(async (req, res) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
   const params = UpdateNodeParams.safeParse(req.params);
   if (!params.success) throw AppError.badRequest(params.error.message);
 
@@ -95,15 +100,13 @@ router.patch("/nodes/:id", asyncHandler(async (req, res) => {
   res.json(UpdateNodeResponse.parse(serializeDates(safeNode)));
 }));
 
-router.delete("/nodes/:id", asyncHandler(async (req, res) => {
+router.delete("/nodes/:id", writeLimiter, asyncHandler(async (req, res) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
   const params = DeleteNodeParams.safeParse(req.params);
   if (!params.success) throw AppError.badRequest(params.error.message);
 
-  const [node] = await db
-    .delete(nodesTable)
-    .where(eq(nodesTable.id, params.data.id))
-    .returning();
-
+  const [node] = await db.delete(nodesTable).where(eq(nodesTable.id, params.data.id)).returning();
   if (!node) throw AppError.notFound(`Node ${params.data.id} not found`);
   res.sendStatus(204);
 }));

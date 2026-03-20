@@ -179,3 +179,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `routes/index.ts` + `app.ts` — TLS router registered (ACME challenge at root, domain routes at `/api`)
 - `ROADMAP.md` — Phase 8 items updated: i18n ✅, marketplace ✅, TLS ✅, API docs ✅, CLI publish 📋
 
+
+---
+
+## [0.9.0] — Security hardening, geographic routing, conflict resolution
+
+### Security (critical fixes)
+- `PATCH /sites/:id` — now requires authentication + site ownership (was completely unprotected)
+- `DELETE /sites/:id` — now requires authentication + site ownership (was completely unprotected)
+- `POST /nodes`, `PATCH /nodes/:id`, `DELETE /nodes/:id` — now requires authentication
+- Rate limiting applied to all previously unprotected write endpoints:
+  - `writeLimiter` (60/min): POST/PATCH/DELETE sites, nodes, members, domains, rollback, discover
+  - `tokenLimiter` (10/hr): POST /tokens — prevents token harvesting
+  - `webhookLimiter` (20/hr): POST /webhooks/test
+
+### Added
+
+**Geographic routing** (`lib/geoRouting.ts`)
+- `inferRegionFromRequest()` — extracts client region from Fly-Region, CF-IPCountry, CloudFront-Viewer-Country, X-Geo-Region headers
+- `selectClosestNode()` — picks best peer by exact region match → region prefix match → fallback to local
+- `geoRoutingMiddleware` — Express middleware issuing 302 redirects to closest node for site serving; activated by `ENABLE_GEO_ROUTING=true`
+- Country-to-region + fly.io region code mapping covering all major markets (Indonesia → ap-southeast-3 priority)
+- Mounted in `app.ts` before host router; never breaks requests (errors fall through)
+
+**Same-domain conflict resolution** (`lib/conflictResolution.ts`)
+- `resolveConflict()` — deterministic trust-chain algorithm:
+  1. Same-origin update → always accept
+  2. Invalid Ed25519 signature → reject
+  3. Earlier `joinedAt` wins (first-write-wins)
+  4. Equal timestamps: lexicographically smaller public key wins
+- Integrated into `POST /federation/sync` — conflicting domains return `409 Conflict` with winner/reason
+- Logs all conflict resolution decisions for auditability
+
+### Changed
+- `app.ts` — `geoRoutingMiddleware` mounted before `hostRouter`; `tlsRouter` mounted at root
+- `federation.ts` — conflict resolution applied before file download in sync handler
+- `nodes.ts` — auth + `writeLimiter` on all write routes
+- `rateLimiter.ts` — `writeLimiter`, `tokenLimiter`, `webhookLimiter` added
+- ROADMAP: geographic routing ✅, conflict resolution ✅, rate limiting all writes ✅

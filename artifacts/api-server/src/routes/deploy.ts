@@ -246,7 +246,7 @@ router.get("/sites/:id/deployments", asyncHandler(async (req: Request, res: Resp
  * Creates a NEW deployment record pointing to the same files as the target,
  * so the history is preserved and the rollback itself is auditable.
  */
-router.post("/sites/:id/deployments/:depId/rollback", asyncHandler(async (req: Request, res: Response) => {
+router.post("/sites/:id/deployments/:depId/rollback", writeLimiter, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const siteId = parseInt(req.params.id as string, 10);

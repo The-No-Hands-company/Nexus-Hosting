@@ -127,7 +127,7 @@ router.post("/federation/gossip/push", asyncHandler(async (req: Request, res: Re
  * Manually trigger a gossip cycle: fetch peer lists from all active peers
  * and register any new nodes they know about.
  */
-router.post("/federation/gossip/discover", asyncHandler(async (req: Request, res: Response) => {
+router.post("/federation/gossip/discover", writeLimiter, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const [localNode] = await db.select().from(nodesTable).where(eq(nodesTable.isLocalNode, 1));

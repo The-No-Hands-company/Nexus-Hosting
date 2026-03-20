@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, sitesTable, siteMembersTable, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { asyncHandler, AppError } from "../lib/errors";
+import { writeLimiter } from "../middleware/rateLimiter";
 import { z } from "zod/v4";
 import crypto from "crypto";
 
@@ -55,7 +56,7 @@ router.get("/sites/:id/members", asyncHandler(async (req: Request, res: Response
   res.json(members);
 }));
 
-router.post("/sites/:id/members", asyncHandler(async (req: Request, res: Response) => {
+router.post("/sites/:id/members", writeLimiter, asyncHandler(async (req: Request, res: Response) => {
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
   await requireSiteOwner(req, siteId);
@@ -87,7 +88,7 @@ router.post("/sites/:id/members", asyncHandler(async (req: Request, res: Respons
   res.status(201).json(member);
 }));
 
-router.patch("/sites/:id/members/:memberId", asyncHandler(async (req: Request, res: Response) => {
+router.patch("/sites/:id/members/:memberId", writeLimiter, asyncHandler(async (req: Request, res: Response) => {
   const siteId = parseInt(req.params.id as string, 10);
   const memberId = parseInt(req.params.memberId as string, 10);
   if (Number.isNaN(siteId) || Number.isNaN(memberId)) throw AppError.badRequest("Invalid ID");
@@ -105,7 +106,7 @@ router.patch("/sites/:id/members/:memberId", asyncHandler(async (req: Request, r
   res.json(updated);
 }));
 
-router.delete("/sites/:id/members/:memberId", asyncHandler(async (req: Request, res: Response) => {
+router.delete("/sites/:id/members/:memberId", writeLimiter, asyncHandler(async (req: Request, res: Response) => {
   const siteId = parseInt(req.params.id as string, 10);
   const memberId = parseInt(req.params.memberId as string, 10);
   if (Number.isNaN(siteId) || Number.isNaN(memberId)) throw AppError.badRequest("Invalid ID");
@@ -122,7 +123,7 @@ router.delete("/sites/:id/members/:memberId", asyncHandler(async (req: Request, 
 
 // ── Site visibility + password ────────────────────────────────────────────────
 
-router.patch("/sites/:id/visibility", asyncHandler(async (req: Request, res: Response) => {
+router.patch("/sites/:id/visibility", writeLimiter, asyncHandler(async (req: Request, res: Response) => {
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
   await requireSiteOwner(req, siteId);

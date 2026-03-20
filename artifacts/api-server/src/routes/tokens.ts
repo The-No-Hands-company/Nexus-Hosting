@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, apiTokensTable } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { asyncHandler, AppError } from "../lib/errors";
+import { tokenLimiter, writeLimiter } from "../middleware/rateLimiter";
 import crypto from "crypto";
 import { z } from "zod/v4";
 
@@ -47,7 +48,7 @@ router.get("/tokens", asyncHandler(async (req: Request, res: Response) => {
 }));
 
 /** POST /api/tokens — create a new token; plaintext returned ONCE */
-router.post("/tokens", asyncHandler(async (req: Request, res: Response) => {
+router.post("/tokens", tokenLimiter, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const parsed = CreateTokenBody.safeParse(req.body);
@@ -83,7 +84,7 @@ router.post("/tokens", asyncHandler(async (req: Request, res: Response) => {
 }));
 
 /** DELETE /api/tokens/:id — revoke a token */
-router.delete("/tokens/:id", asyncHandler(async (req: Request, res: Response) => {
+router.delete("/tokens/:id", writeLimiter, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const id = parseInt(req.params.id as string, 10);

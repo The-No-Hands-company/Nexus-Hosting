@@ -7,6 +7,7 @@ import { asyncHandler, AppError } from "../lib/errors";
 import { federationLimiter } from "../middleware/rateLimiter";
 import { parsePagination, buildPaginatedResponse } from "../lib/pagination";
 import logger from "../lib/logger";
+import { resolveConflict } from "../lib/conflictResolution";
 
 const router: IRouter = Router();
 const PROTOCOL_VERSION = "fedhost/1.0";
@@ -217,6 +218,42 @@ router.post("/federation/sync", asyncHandler(async (req, res) => {
       res.json({ status: "skipped", reason: "already_synced" });
       return;
     }
+  }
+
+  // ── Conflict resolution ───────────────────────────────────────────────────
+  // If we already host this domain, run the trust-chain algorithm before
+  // accepting the incoming sync.
+  const fromDomain = (req.body as { fromDomain?: string }).fromDomain ??
+    req.headers["x-federation-from"] as string | undefined;
+
+  if (existingSite && fromDomain) {
+    const payload = JSON.stringify({ siteDomain, deploymentId, timestamp });
+    const resolution = await resolveConflict({
+      siteDomain,
+      remoteNodeDomain: fromDomain,
+      remoteDeploymentId: deploymentId,
+      remoteSignature: signature,
+      remotePayload: payload,
+    });
+
+    if (!resolution.accepted) {
+      logger.info(
+        { siteDomain, fromDomain, reason: resolution.reason },
+        "[sync] Conflict resolution: local node wins — sync rejected",
+      );
+      res.status(409).json({
+        status: "conflict",
+        winner: "local",
+        reason: resolution.reason,
+        message: `This node's version of '${siteDomain}' takes precedence (${resolution.reason}).`,
+      });
+      return;
+    }
+
+    logger.info(
+      { siteDomain, fromDomain, reason: resolution.reason },
+      "[sync] Conflict resolution: remote node wins — accepting sync",
+    );
   }
 
   // Find which peer is the origin for this site — try all active peers

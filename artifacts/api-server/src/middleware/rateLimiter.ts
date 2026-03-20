@@ -49,6 +49,33 @@ export const federationLimiter = rateLimit({
   handler: makeHandler("Federation request limit reached.", "FEDERATION_RATE_LIMITED"),
 });
 
+// Write operations — 60 mutations / minute per IP (create, update, delete)
+export const writeLimiter = rateLimit({
+  windowMs: 60_000,
+  max: isProd ? 60 : 10_000,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  handler: makeHandler("Write limit reached. Please wait before making more changes.", "WRITE_RATE_LIMITED"),
+});
+
+// Token creation — 10 / hour per IP (prevent token harvesting)
+export const tokenLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  max: isProd ? 10 : 1_000,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  handler: makeHandler("Token creation limit reached. Try again in an hour.", "TOKEN_RATE_LIMITED"),
+});
+
+// Webhook test delivery — 20 / hour per IP
+export const webhookLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  max: isProd ? 20 : 1_000,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  handler: makeHandler("Webhook test limit reached.", "WEBHOOK_RATE_LIMITED"),
+});
+
 // Slow down on repeated requests before hard-limiting
 export const speedLimiter = slowDown({
   windowMs: 60_000,
