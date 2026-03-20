@@ -28,6 +28,7 @@ _fh_completion() {
     -*)
       case "$prev" in
         deploy)   COMPREPLY=( $(compgen -W "--node --token" -- "$cur") ) ;;
+        create)   COMPREPLY=( $(compgen -W "--template --no-install" -- "$cur") ) ;;
         build)    COMPREPLY=( $(compgen -W "--git-url --branch --command --output --env --install --staging --wait" -- "$cur") ) ;;
         logs)     COMPREPLY=( $(compgen -W "--build --follow --limit" -- "$cur") ) ;;
         forms)    COMPREPLY=( $(compgen -W "--form --limit --export --json --unread" -- "$cur") ) ;;
@@ -57,6 +58,7 @@ _fh() {
   case $state in
     command)
       local commands=(
+        'create:Scaffold a new project from a template'
         'init:Initialise a new site in the current directory'
         'login:Authenticate with a FedHost node'
         'logout:Remove stored credentials'
@@ -115,6 +117,7 @@ const FISH_COMPLETION = `
 
 set -l commands init login logout whoami status deploy build logs sites forms tokens rollback analytics completion
 
+complete -c fh -f -n "not __fish_seen_subcommand_from $commands" -a create    -d "Scaffold new project from template"
 complete -c fh -f -n "not __fish_seen_subcommand_from $commands" -a init      -d "Initialise a new site"
 complete -c fh -f -n "not __fish_seen_subcommand_from $commands" -a login     -d "Authenticate with a node"
 complete -c fh -f -n "not __fish_seen_subcommand_from $commands" -a logout    -d "Remove stored credentials"
@@ -128,6 +131,10 @@ complete -c fh -f -n "not __fish_seen_subcommand_from $commands" -a forms     -d
 complete -c fh -f -n "not __fish_seen_subcommand_from $commands" -a tokens    -d "Manage API tokens"
 complete -c fh -f -n "not __fish_seen_subcommand_from $commands" -a rollback  -d "Rollback deployment"
 complete -c fh -f -n "not __fish_seen_subcommand_from $commands" -a analytics -d "View analytics"
+
+# create flags
+complete -c fh -n "__fish_seen_subcommand_from create" -l template -a "html vite astro nextjs svelte" -d "Project template"
+complete -c fh -n "__fish_seen_subcommand_from create" -l no-install -d "Skip npm install"
 
 # build flags
 complete -c fh -n "__fish_seen_subcommand_from build" -l git-url  -d "Git repository URL"

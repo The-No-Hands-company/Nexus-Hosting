@@ -22,6 +22,7 @@ interface ApiToken {
   tokenPrefix: string;
   lastUsedAt: string | null;
   expiresAt: string | null;
+  scopes:    string;
   createdAt: string;
 }
 
@@ -67,8 +68,9 @@ export default function TokensPage() {
   const qc = useQueryClient();
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newExpiry, setNewExpiry] = useState("");
+  const [newName, setNewName]       = useState("");
+  const [newExpiry, setNewExpiry]   = useState("");
+  const [newScopes, setNewScopes]   = useState<string[]>(["read", "write", "deploy"]);
   const [createdToken, setCreatedToken] = useState<CreatedToken | null>(null);
 
   const { data: tokens = [], isLoading } = useQuery<ApiToken[]>({
@@ -78,7 +80,7 @@ export default function TokensPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (body: { name: string; expiresInDays?: number }) =>
+    mutationFn: (body: { name: string; expiresInDays?: number; scopes?: string[] }) =>
       apiFetch<CreatedToken>("/tokens", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["tokens"] });
@@ -117,6 +119,7 @@ export default function TokensPage() {
     if (!newName.trim()) return;
     createMutation.mutate({
       name: newName.trim(),
+      scopes: newScopes,
       ...(newExpiry ? { expiresInDays: parseInt(newExpiry, 10) } : {}),
     });
   }
@@ -126,6 +129,7 @@ export default function TokensPage() {
     setCreatedToken(null);
     setNewName("");
     setNewExpiry("");
+    setNewScopes(["read", "write", "deploy"]);
   }
 
   return (
@@ -188,6 +192,29 @@ export default function TokensPage() {
                 </div>
                 <div>
                   <label className="text-sm text-muted-foreground mb-1.5 block">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-white">Permissions</label>
+                      <div className="flex flex-wrap gap-2">
+                        {(["read", "write", "deploy", "admin"] as const).map(scope => (
+                          <button key={scope} type="button"
+                            onClick={() => setNewScopes(s => s.includes(scope) ? s.filter(x => x !== scope) : [...s, scope])}
+                            className={`px-3 py-1.5 rounded-lg text-xs border transition-all ${
+                              newScopes.includes(scope)
+                                ? "bg-primary/10 border-primary/30 text-primary"
+                                : "border-white/10 text-muted-foreground hover:border-white/20"
+                            }`}>
+                            {scope}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        <span className="text-white">read</span> — view sites/analytics·
+                        <span className="text-white"> write</span> — edit settings·
+                        <span className="text-white"> deploy</span> — push files·
+                        <span className="text-white"> admin</span> — node admin
+                      </p>
+                    </div>
+
                     Expires in (days) <span className="text-muted-foreground/60">— leave blank for no expiry</span>
                   </label>
                   <input
@@ -273,6 +300,9 @@ export default function TokensPage() {
                         Created {formatDistanceToNow(new Date(token.createdAt), { addSuffix: true })}
                         {token.lastUsedAt && (
                           <> · Last used {formatDistanceToNow(new Date(token.lastUsedAt), { addSuffix: true })}</>
+                        )}
+                        {token.scopes && token.scopes !== "read,write,deploy" && (
+                          <span className="ml-1 text-xs text-primary/70">[{token.scopes}]</span>
                         )}
                         {token.expiresAt && (
                           <> · Expires {formatDistanceToNow(new Date(token.expiresAt), { addSuffix: true })}</>

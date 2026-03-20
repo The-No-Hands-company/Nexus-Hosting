@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Federated Hosting API
-  version: 0.9.0
+  version: 1.0.0
   description: |
     Production-grade federated static site hosting network.
     Every node exposes this API. Authentication uses session cookies (browser)
@@ -2705,3 +2705,129 @@ components:
                   up:       {type: integer}
                   degraded: {type: integer}
                   down:     {type: integer}
+
+  /sites/{id}/webhooks:
+    get:
+      summary: List webhooks for a site
+      tags: [Webhooks]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: integer}}]
+      responses:
+        '200': {description: Webhook list (secrets masked)}
+    post:
+      summary: Create a webhook
+      tags: [Webhooks]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: integer}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:     {type: string, format: uri}
+                secret:  {type: string}
+                events:  {oneOf: [{type: string, enum: ['*']}, {type: array, items: {type: string}}]}
+                enabled: {type: boolean, default: true}
+      responses:
+        '201': {description: Webhook created}
+
+  /sites/{id}/webhooks/{hookId}:
+    patch:
+      summary: Update a webhook
+      tags: [Webhooks]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,     in: path, required: true, schema: {type: integer}}
+        - {name: hookId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Updated webhook}
+    delete:
+      summary: Delete a webhook
+      tags: [Webhooks]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,     in: path, required: true, schema: {type: integer}}
+        - {name: hookId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Deleted}
+
+  /sites/{id}/webhooks/{hookId}/deliveries:
+    get:
+      summary: List recent webhook delivery attempts
+      tags: [Webhooks]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,     in: path, required: true, schema: {type: integer}}
+        - {name: hookId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Last 50 deliveries with status, timing, retry count}
+
+  /sites/{id}/clone:
+    post:
+      summary: Clone a site — copy all files to a new domain
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: integer}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, domain]
+              properties:
+                name:   {type: string}
+                domain: {type: string}
+      responses:
+        '201': {description: Cloned site, no storage duplication (objectPaths reused)}
+
+  /sites/{id}/deployments/{depId}/diff:
+    get:
+      summary: File-level diff between two deployments
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,    in: path,  required: true,  schema: {type: integer}}
+        - {name: depId, in: path,  required: true,  schema: {type: integer}}
+        - {name: base,  in: query, required: false, schema: {type: integer}, description: "Base deployment ID; defaults to previous version"}
+      responses:
+        '200':
+          description: Diff summary with added/changed/removed/unchanged file lists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary: {type: object, properties: {added: {type: integer}, changed: {type: integer}, removed: {type: integer}, unchanged: {type: integer}, netSizeBytes: {type: integer}}}
+                  added:   {type: array}
+                  changed: {type: array}
+                  removed: {type: array}
+
+  /tokens:
+    get:
+      summary: List API tokens for the current user
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      responses:
+        '200': {description: Token list (hashes never returned, prefix shown)}
+    post:
+      summary: Create an API token
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:         {type: string}
+                scopes:       {type: array, items: {type: string, enum: [read, write, deploy, admin]}, default: [read, write, deploy]}
+                expiresInDays:{type: integer}
+      responses:
+        '201':
+          description: Token created — plaintext in `token` field, shown once only
