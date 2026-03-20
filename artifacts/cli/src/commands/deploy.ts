@@ -106,8 +106,6 @@ export const deployCommand = new Command("deploy")
       const contentType = (mime.lookup(f.abs) || "application/octet-stream") as string;
 
       // Compute SHA-256 hash for server-side deduplication.
-      // We stream the file once for hashing, then again for upload —
-      // never loading the full file into memory.
       const contentHash = await new Promise<string>((resolve, reject) => {
         const hash = crypto.createHash("sha256");
         fs.createReadStream(f.abs)
@@ -116,21 +114,32 @@ export const deployCommand = new Command("deploy")
           .on("error", reject);
       });
 
-      const { uploadUrl, objectPath } = await apiFetch<UploadUrlResponse>(
-        `/sites/${siteId}/files/upload-url`,
-        {
-          method: "POST",
-          body: JSON.stringify({ filePath: f.rel, contentType, size }),
-        },
-      );
+      // Retry up to 3 times with exponential backoff (1s, 2s, 4s)
+      const MAX_RETRIES = 3;
+      let lastError: Error | null = null;
 
-      // Stream file directly to presigned URL — no in-memory buffer
-      await apiUpload(uploadUrl, fs.createReadStream(f.abs), contentType, size);
-
-      await apiFetch(`/sites/${siteId}/files`, {
-        method: "POST",
-        body: JSON.stringify({ filePath: f.rel, objectPath, contentType, sizeBytes: size, contentHash }),
-      });
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+          await new Promise(r => setTimeout(r, delay));
+        }
+        try {
+          const { uploadUrl, objectPath } = await apiFetch<UploadUrlResponse>(
+            `/sites/${siteId}/files/upload-url`,
+            { method: "POST", body: JSON.stringify({ filePath: f.rel, contentType, size }) },
+          );
+          await apiUpload(uploadUrl, fs.createReadStream(f.abs), contentType, size);
+          await apiFetch(`/sites/${siteId}/files`, {
+            method: "POST",
+            body: JSON.stringify({ filePath: f.rel, objectPath, contentType, sizeBytes: size, contentHash }),
+          });
+          return; // success
+        } catch (err) {
+          lastError = err as Error;
+          if (attempt < MAX_RETRIES) continue;
+        }
+      }
+      throw lastError ?? new Error(`Failed to upload ${f.rel}`);
     }
 
     // Chunked concurrency

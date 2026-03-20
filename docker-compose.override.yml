@@ -1,0 +1,41 @@
+# docker-compose.override.yml
+#
+# Add Caddy as a reverse proxy with automatic TLS.
+# Caddy handles certificate issuance and renewal via Let's Encrypt
+# without any additional configuration.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+#
+# Requirements:
+#   - PUBLIC_DOMAIN set in your environment (e.g. node.example.com)
+#   - Ports 80 and 443 open and reachable from the internet
+#   - DNS A/AAAA record pointing to this server
+#
+# No ACME_ENABLED or certbot needed — Caddy handles everything.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - fedhost
+
+volumes:
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local

@@ -97,20 +97,18 @@ At 1.5B users, even 100 requests/second means 300–400 database operations per 
 
 ---
 
-### 8. ACME/TLS Automation is a Stub — Not Functional
+### 8. ACME/TLS Automation — Fully Implemented
 
 **Severity: MEDIUM — Misleading**
 
-`routes/tls.ts` has extensive comments about ACME but the actual implementation with `ACME_ENABLED=true` only registers a token in a Map and returns it. It does not:
-- Create an ACME account
-- Submit a certificate order to Let's Encrypt
-- Wait for challenge verification
-- Generate a CSR
-- Retrieve and store the signed certificate
+ACME is fully implemented using the `acme-client` npm package.
 
-The `PRODUCTION_CHECKLIST.md` says TLS automation is available. It is not.
+- `lib/acme.ts`: account key persistence, HTTP-01 challenge served via `/.well-known/acme-challenge/:token`, certificate written to `ACME_CERT_DIR/<domain>/fullchain.pem` + `privkey.pem`
+- DNS-01 challenge also supported (`ACME_CHALLENGE_TYPE=dns`) with operator-registered hooks for any DNS provider
+- 12-hour renewal scheduler with expiry warning emails at 30/14/7/3/1 days before expiry
+- `ACME_STAGING=true` for rate-limit-safe testing
 
-**What needs to be done:** Either implement the ACME flow using the `acme-client` npm package, or clearly mark TLS automation as "planned — use Caddy or certbot for now" and remove the misleading `ACME_ENABLED` env var from documentation.
+**Recommended for most operators:** Use Caddy instead (simpler, no config). See `docker-compose.override.yml` and `Caddyfile`.
 
 ---
 

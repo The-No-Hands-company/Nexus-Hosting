@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -13,6 +13,62 @@ import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+// Auto-scrolling log pane — polls every 2s while build is running
+function LogPane({ siteId, buildId, status }: { siteId: number; buildId: number; status: string }) {
+  const [log, setLog] = useState<string | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const isActive = status === "running" || status === "queued";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      while (!cancelled) {
+        try {
+          const r = await fetch(`${BASE}/api/sites/${siteId}/builds/${buildId}`, { credentials: "include" });
+          if (r.ok) {
+            const d = await r.json() as { log?: string; status: string };
+            setLog(d.log ?? null);
+            if (d.status !== "running" && d.status !== "queued") break;
+          }
+        } catch {}
+        if (!cancelled) await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    if (isActive) {
+      poll();
+    } else {
+      // Static load for completed builds
+      fetch(`${BASE}/api/sites/${siteId}/builds/${buildId}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : null)
+        .then((d: any) => d && setLog(d.log ?? null))
+        .catch(() => {});
+    }
+
+    return () => { cancelled = true; };
+  }, [siteId, buildId, isActive]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [log]);
+
+  return (
+    <div className="relative">
+      {isActive && (
+        <div className="absolute top-2 right-2 flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-full">
+          <Loader2 className="w-3 h-3 animate-spin" />live
+        </div>
+      )}
+      <pre className="text-xs font-mono text-muted-foreground bg-muted/10 rounded-lg p-3 overflow-auto max-h-96 whitespace-pre-wrap">
+        {log ?? "Waiting for output…"}
+        <div ref={bottomRef} />
+      </pre>
+    </div>
+  );
+}
 
 interface BuildJob {
   id: number; status: string; gitUrl: string | null; gitBranch: string;
@@ -156,9 +212,7 @@ export default function BuildHistory() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <pre className="text-xs font-mono text-muted-foreground bg-muted/10 rounded-lg p-3 overflow-auto max-h-96 whitespace-pre-wrap">
-                {selected.log ?? "No output yet…"}
-              </pre>
+              <LogPane siteId={siteId} buildId={selected.id} status={selected.status} />
             </CardContent>
           </Card>
         )}

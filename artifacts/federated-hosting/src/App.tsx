@@ -27,6 +27,8 @@ const ApiDocs        = lazy(() => import("@/pages/ApiDocs"));
 const SiteSettings   = lazy(() => import("@/pages/SiteSettings"));
 const UsageDashboard      = lazy(() => import("@/pages/UsageDashboard"));
 const TwoFactorSettings   = lazy(() => import("@/pages/TwoFactorSettings"));
+const AcceptInvitation    = lazy(() => import("@/pages/AcceptInvitation"));
+const AccountSettings     = lazy(() => import("@/pages/AccountSettings"));
 const FormInbox           = lazy(() => import("@/pages/FormInbox"));
 const BuildHistory        = lazy(() => import("@/pages/BuildHistory"));
 
@@ -80,6 +82,8 @@ function Router() {
             <Route path="/sites/:id/settings" component={SiteSettings} />
             <Route path="/usage" component={UsageDashboard} />
             <Route path="/settings/2fa" component={TwoFactorSettings} />
+            <Route path="/accept-invitation" component={AcceptInvitation} />
+            <Route path="/settings/account" component={AccountSettings} />
             <Route path="/sites/:id/forms" component={FormInbox} />
             <Route path="/sites/:id/builds" component={BuildHistory} />
             <Route component={NotFound} />

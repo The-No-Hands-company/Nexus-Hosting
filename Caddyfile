@@ -1,0 +1,32 @@
+# Caddyfile
+# Reverse proxy for FedHost with automatic HTTPS.
+# Replace {$PUBLIC_DOMAIN} with your actual domain, or set the PUBLIC_DOMAIN env var.
+
+{$PUBLIC_DOMAIN} {
+    # Proxy all traffic to the FedHost app container
+    reverse_proxy app:8080
+
+    # Enable access logs in JSON format for log aggregation
+    log {
+        output stdout
+        format json
+    }
+
+    # Compress responses
+    encode gzip
+
+    # Security headers (supplement site-level headers from FedHost)
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # Remove Server header to avoid fingerprinting
+        -Server
+    }
+}
+
+# Optional: redirect www to non-www
+# www.{$PUBLIC_DOMAIN} {
+#     redir https://{$PUBLIC_DOMAIN}{uri} permanent
+# }
