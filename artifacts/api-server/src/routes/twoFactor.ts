@@ -80,10 +80,6 @@ router.post("/auth/2fa/setup", asyncHandler(async (req: Request, res: Response) 
   // Generate QR code as base64 data URL
   const qrCode = await QRCode.toDataURL(otpAuthUrl, { width: 256, margin: 2 });
 
-  // Store the secret temporarily in the session so we can verify it before enabling
-  (req as any).session = (req as any).session ?? {};
-  (req as any).session.pending2faSecret = secret;
-
   res.json({
     secret,
     otpAuthUrl,
@@ -137,28 +133,42 @@ router.post("/auth/2fa/validate", authLimiter, asyncHandler(async (req: Request,
   const [cred] = await db.select().from(totpCredentialsTable).where(eq(totpCredentialsTable.userId, req.user.id));
   if (!cred) throw AppError.badRequest("2FA is not enabled for this account");
 
-  // Try TOTP code
-  if (code.replace(/-/g, "").length === 6 && authenticator.check(code, cred.secret)) {
+  // Try TOTP first
+  const isValid = authenticator.check(code.replace(/-/g, ""), cred.secret);
+
+  if (isValid) {
     res.json({ valid: true, method: "totp" });
     return;
   }
 
-  // Try backup code
+  // Try backup code — atomically remove it using a DB transaction to prevent races
   const normalized = code.replace(/-/g, "").toUpperCase();
   const codeHash   = crypto.createHash("sha256").update(normalized).digest("hex");
-  const backups    = cred.backupCodes as string[];
-  const usedIndex  = backups.indexOf(codeHash);
 
-  if (usedIndex !== -1) {
-    // Consume the backup code
+  const consumed = await db.transaction(async (tx) => {
+    // Re-fetch inside transaction with row lock
+    const [locked] = await tx
+      .select({ backupCodes: totpCredentialsTable.backupCodes })
+      .from(totpCredentialsTable)
+      .where(eq(totpCredentialsTable.userId, req.user.id))
+      .for("update");
+
+    if (!locked) return false;
+    const backups = locked.backupCodes as string[];
+    const idx = backups.indexOf(codeHash);
+    if (idx === -1) return false;
+
     const remaining = [...backups];
-    remaining.splice(usedIndex, 1);
-    await db.update(totpCredentialsTable)
+    remaining.splice(idx, 1);
+    await tx.update(totpCredentialsTable)
       .set({ backupCodes: remaining })
       .where(eq(totpCredentialsTable.userId, req.user.id));
+    return remaining.length;
+  });
 
-    logger.warn({ userId: req.user.id, remaining: remaining.length }, "[2fa] Backup code used");
-    res.json({ valid: true, method: "backup", remainingBackupCodes: remaining.length });
+  if (consumed !== false) {
+    logger.warn({ userId: req.user.id, remaining: consumed }, "[2fa] Backup code used");
+    res.json({ valid: true, method: "backup", remainingBackupCodes: consumed });
     return;
   }
 
@@ -208,6 +218,61 @@ router.post("/auth/2fa/backup", writeLimiter, asyncHandler(async (req: Request, 
     .where(eq(totpCredentialsTable.userId, req.user.id));
 
   res.json({ backupCodes: newCodes, message: "Old backup codes have been invalidated. Save these new ones." });
+}));
+
+// ── Complete login challenge ───────────────────────────────────────────────────
+// Called from the 2FA challenge page after the user enters their TOTP code.
+// Upgrades the pending session to a full authenticated session.
+
+router.post("/auth/2fa/complete", authLimiter, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
+  // Must have a pending 2FA session
+  const session = (req as any).sessionData as { twoFactorPending?: boolean } | undefined;
+  if (!session?.twoFactorPending) {
+    throw AppError.badRequest("No pending 2FA challenge", "NO_2FA_PENDING");
+  }
+
+  const { code } = z.object({ code: z.string().min(6).max(10) }).parse(req.body);
+
+  const [cred] = await db.select().from(totpCredentialsTable).where(eq(totpCredentialsTable.userId, req.user.id));
+  if (!cred) throw AppError.badRequest("2FA credential not found");
+
+  // Try TOTP
+  const isValid = authenticator.check(code.replace(/-/g, ""), cred.secret);
+
+  // Try backup code
+  let usedBackup = false;
+  if (!isValid) {
+    const normalized = code.replace(/-/g, "").toUpperCase();
+    const codeHash   = crypto.createHash("sha256").update(normalized).digest("hex");
+    const backups    = cred.backupCodes as string[];
+    const idx        = backups.indexOf(codeHash);
+    if (idx !== -1) {
+      usedBackup = true;
+      const remaining = [...backups];
+      remaining.splice(idx, 1);
+      await db.update(totpCredentialsTable)
+        .set({ backupCodes: remaining })
+        .where(eq(totpCredentialsTable.userId, req.user.id));
+    }
+  }
+
+  if (!isValid && !usedBackup) {
+    throw AppError.badRequest("Invalid code", "INVALID_TOTP");
+  }
+
+  // Upgrade session: remove the twoFactorPending flag
+  const { twoFactorPending: _, pendingSid: __, ...cleanSession } = session as any;
+  const { createSession, SESSION_COOKIE, setSessionCookie, clearSession, getSessionId } =
+    await import("../lib/auth");
+  const oldSid = getSessionId(req as any);
+  await clearSession(res as any, oldSid);
+  const newSid = await createSession(cleanSession);
+  setSessionCookie(res as any, newSid);
+
+  logger.info({ userId: req.user.id, method: usedBackup ? "backup" : "totp" }, "[2fa] Challenge completed");
+  res.json({ authenticated: true, method: usedBackup ? "backup" : "totp" });
 }));
 
 export default router;

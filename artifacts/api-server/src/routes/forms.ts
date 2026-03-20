@@ -48,6 +48,16 @@ const formSubmitLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Additional per-site + per-IP limiter: max 3 submissions per IP per site per hour
+const formSiteLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  max: process.env.NODE_ENV === "production" ? 3 : 1000,
+  keyGenerator: (req) => `${req.ip}:${req.params.domain ?? ""}:${req.params.formName ?? ""}`,
+  handler: (_req, res) => res.status(429).json({ error: "Submission limit reached for this form. Please try again later." }),
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+});
+
 // ── Spam scoring ──────────────────────────────────────────────────────────────
 
 function scoreSpam(data: Record<string, string>): number {
@@ -75,7 +85,7 @@ router.options("/forms/:domain/:formName", (req: Request, res: Response) => {
   res.sendStatus(204);
 });
 
-router.post("/forms/:domain/:formName", formSubmitLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post("/forms/:domain/:formName", formSubmitLimiter, formSiteLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { domain, formName } = req.params as { domain: string; formName: string };
 
   // CORS — allow cross-origin submissions from the site itself
@@ -139,6 +149,35 @@ router.post("/forms/:domain/:formName", formSubmitLimiter, asyncHandler(async (r
       domain,
       formName,
       data,
+    }).catch(() => {});
+  }
+
+  // Fire webhooks registered for this site (non-blocking)
+  if (!flagged) {
+    import("@workspace/db").then(async ({ webhooksTable }) => {
+      const { eq: eqFn, and: andFn } = await import("drizzle-orm");
+      const hooks = await db.select({ url: webhooksTable.url, secret: webhooksTable.secret })
+        .from(webhooksTable)
+        .where(andFn(eqFn(webhooksTable.siteId, site.id), eqFn(webhooksTable.enabled, 1)));
+
+      for (const hook of hooks) {
+        const payload = JSON.stringify({
+          event: "form.submission",
+          formName,
+          domain,
+          data,
+          submittedAt: new Date().toISOString(),
+        });
+        const sig = hook.secret
+          ? require("crypto").createHmac("sha256", hook.secret).update(payload).digest("hex")
+          : "";
+        fetch(hook.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(sig ? { "X-Webhook-Signature": sig } : {}) },
+          body: payload,
+          signal: AbortSignal.timeout(8000),
+        }).catch(() => {});
+      }
     }).catch(() => {});
   }
 

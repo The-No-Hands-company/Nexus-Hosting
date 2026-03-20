@@ -119,6 +119,35 @@ export async function flushAnalyticsBuffer(): Promise<void> {
   });
 
   logger.debug({ flushed: rows.length, buckets: buckets.size }, "Analytics buffer flushed");
+
+  // ── Update per-site bandwidth + hit totals ────────────────────────────────
+  // Roll up bytesServed into sites.monthly_bandwidth_gb for the usage dashboard.
+  // We use a monthly window: reset on the 1st of each month by tracking via
+  // the current month's analytics rows rather than a running counter.
+  try {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    await db.execute(sql`
+      UPDATE sites s
+      SET
+        monthly_bandwidth_gb = (
+          SELECT COALESCE(SUM(bytes_served), 0) / (1024.0 * 1024 * 1024)
+          FROM site_analytics
+          WHERE site_id = s.id AND hour >= ${monthStart}
+        ),
+        hit_count = (
+          SELECT COALESCE(SUM(hits), 0)
+          FROM site_analytics
+          WHERE site_id = s.id
+        )
+      WHERE s.id IN (
+        SELECT DISTINCT site_id FROM site_analytics WHERE hour >= ${monthStart}
+      )
+    `);
+  } catch (err) {
+    logger.warn({ err }, "Failed to update site bandwidth/hit totals");
+  }
 }
 
 let flushTimer: NodeJS.Timeout | null = null;

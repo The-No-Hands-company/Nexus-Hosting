@@ -275,7 +275,7 @@ router.post("/federation/sync", asyncHandler(async (req, res) => {
   let manifestData: {
     site: typeof sitesTable.$inferSelect;
     deployment: typeof siteDeploymentsTable.$inferSelect;
-    files: Array<{ filePath: string; contentType: string; sizeBytes: number; downloadUrl: string }>;
+    files: Array<{ filePath: string; contentType: string; sizeBytes: number; downloadUrl: string; contentHash?: string }>;
   } | null = null;
 
   let originDomain: string | null = null;
@@ -336,9 +336,35 @@ router.post("/federation/sync", asyncHandler(async (req, res) => {
     logger.info({ siteDomain, siteId: created.id }, "Sync: created local site record");
   }
 
+  // Diff-based sync: collect hashes of files we already have locally
+  // so we can skip downloading content we already possess.
+  const localHashes = new Map<string, string>(); // hash → objectPath
+  if (localSite) {
+    const existing = await db
+      .select({ contentHash: siteFilesTable.contentHash, objectPath: siteFilesTable.objectPath })
+      .from(siteFilesTable)
+      .where(and(eq(siteFilesTable.siteId, localSite.id), sql`content_hash IS NOT NULL`));
+    for (const f of existing) {
+      if (f.contentHash) localHashes.set(f.contentHash, f.objectPath);
+    }
+  }
+
   // Download all files and store in local object storage
   const downloadResults = await Promise.allSettled(
     manifestData.files.map(async (remoteFile) => {
+      // If we already have this exact content, reuse the objectPath — no download needed
+      const existingPath = remoteFile.contentHash ? localHashes.get(remoteFile.contentHash) : null;
+      if (existingPath) {
+        return {
+          filePath: remoteFile.filePath,
+          objectPath: existingPath,
+          contentType: remoteFile.contentType,
+          sizeBytes: remoteFile.sizeBytes,
+          contentHash: remoteFile.contentHash,
+          deduplicated: true,
+        };
+      }
+
       const fileRes = await fetch(remoteFile.downloadUrl, { signal: AbortSignal.timeout(30_000) });
       if (!fileRes.ok) throw new Error(`Failed to download ${remoteFile.filePath}: HTTP ${fileRes.status}`);
 

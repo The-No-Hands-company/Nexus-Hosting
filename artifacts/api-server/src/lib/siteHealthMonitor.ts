@@ -106,6 +106,27 @@ async function runHealthChecks(): Promise<void> {
     if (result.status === "down") {
       logger.warn({ domain: site.domain, error: result.error }, "[site-health] Site is down");
     }
+
+    // Persist to DB for history (fire-and-forget)
+    import("@workspace/db").then(({ db: _db, siteHealthChecksTable }) => {
+      _db.insert(siteHealthChecksTable).values({
+        siteId: site.id,
+        status: result.status,
+        httpStatus: result.httpStatus,
+        responseMs: result.responseMs ?? null,
+        error: result.error ?? null,
+        checkedAt: new Date(result.checkedAt),
+      }).catch(() => {});
+
+      // Alert if site transitioned to down
+      const prev = healthResults.get(site.id);
+      if (result.status === "down" && prev?.status !== "down") {
+        // Notify site owner by email
+        import("./email").then(({ emailSiteDown }) => {
+          emailSiteDown?.({ siteId: site.id, domain: site.domain }).catch(() => {});
+        }).catch(() => {});
+      }
+    }).catch(() => {});
   }
 
   logger.debug({ checked: activeSites.length }, "[site-health] Health checks complete");

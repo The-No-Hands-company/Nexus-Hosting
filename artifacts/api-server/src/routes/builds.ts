@@ -39,11 +39,13 @@ const router: IRouter = Router();
 const execFileAsync = promisify(execFile);
 
 const BuildTriggerBody = z.object({
-  gitUrl:       z.string().url().optional(),
-  gitBranch:    z.string().default("main"),
-  buildCommand: z.string().max(500).default("npm run build"),
-  outputDir:    z.string().max(200).default("dist"),
-  environment:  z.enum(["production", "staging", "preview"]).default("production"),
+  gitUrl:         z.string().url().optional(),
+  gitBranch:      z.string().default("main"),
+  buildCommand:   z.string().max(500).default("npm run build"),
+  outputDir:      z.string().max(200).default("dist"),
+  environment:    z.enum(["production", "staging", "preview"]).default("production"),
+  installCommand: z.string().max(500).optional(), // override auto-detected install
+  envVars:        z.record(z.string(), z.string()).optional().default({}), // injected into build
 });
 
 // ── Build runner ──────────────────────────────────────────────────────────────
@@ -62,6 +64,8 @@ async function runBuild(buildId: number, siteId: number, opts: {
   buildCommand: string;
   outputDir: string;
   environment: string;
+  installCommand?: string;
+  envVars?: Record<string, string>;
   userId: string;
   userEmail?: string;
   siteName: string;
@@ -72,6 +76,19 @@ async function runBuild(buildId: number, siteId: number, opts: {
     process.stdout.write(msg + "\n");
     appendLog(buildId, msg + "\n").catch(() => {});
   };
+
+  // Merge user-supplied env vars (safe — values are strings, no shell expansion)
+  const buildEnv: Record<string, string> = {
+    ...process.env as Record<string, string>,
+    NODE_ENV: "production",
+    CI: "true",
+    ...(opts.envVars ?? {}),
+  };
+  // Remove server secrets from build environment
+  for (const key of ["SMTP_PASS", "DATABASE_URL", "REDIS_URL", "SESSION_SECRET",
+                      "COOKIE_SECRET", "OBJECT_STORAGE_SECRET_ACCESS_KEY"]) {
+    delete buildEnv[key];
+  }
 
   try {
     await db.update(buildJobsTable).set({ status: "running", startedAt: new Date() }).where(eq(buildJobsTable.id, buildId));
@@ -87,21 +104,32 @@ async function runBuild(buildId: number, siteId: number, opts: {
     // ── Step 2: Install ──────────────────────────────────────────────────────
     const hasYarnLock = fs.existsSync(path.join(tmpDir, "yarn.lock"));
     const hasPnpmLock = fs.existsSync(path.join(tmpDir, "pnpm-lock.yaml"));
-    const installCmd  = hasPnpmLock ? ["pnpm", ["install", "--frozen-lockfile"]]
-                      : hasYarnLock ? ["yarn", ["install", "--frozen-lockfile"]]
-                      : ["npm", ["ci", "--prefer-offline"]];
+
+    let installCmd: [string, string[]];
+    if (opts.installCommand) {
+      const [cmd, ...args] = opts.installCommand.split(" ");
+      installCmd = [cmd!, args];
+    } else if (hasPnpmLock) {
+      installCmd = ["pnpm", ["install", "--frozen-lockfile"]];
+    } else if (hasYarnLock) {
+      installCmd = ["yarn", ["install", "--frozen-lockfile"]];
+    } else {
+      installCmd = ["npm", ["ci", "--prefer-offline"]];
+    }
 
     log(`[build] Installing dependencies (${installCmd[0]})...`);
-    await execFileAsync(installCmd[0] as string, installCmd[1] as string[], {
-      cwd: tmpDir, timeout: 300_000, env: { ...process.env, NODE_ENV: "production" },
+    await execFileAsync(installCmd[0], installCmd[1], {
+      cwd: tmpDir, timeout: 300_000, env: buildEnv,
     });
 
     // ── Step 3: Build ────────────────────────────────────────────────────────
     const [cmd, ...args] = opts.buildCommand.split(" ");
     log(`[build] Running: ${opts.buildCommand}`);
+    if (opts.envVars && Object.keys(opts.envVars).length > 0) {
+      log(`[build] Injecting ${Object.keys(opts.envVars).length} env vars: ${Object.keys(opts.envVars).join(", ")}`);
+    }
     const { stdout, stderr } = await execFileAsync(cmd!, args, {
-      cwd: tmpDir, timeout: 600_000,
-      env: { ...process.env, NODE_ENV: "production", CI: "true" },
+      cwd: tmpDir, timeout: 600_000, env: buildEnv,
     });
     if (stdout) log(stdout);
     if (stderr) log(stderr);
@@ -134,22 +162,30 @@ async function runBuild(buildId: number, siteId: number, opts: {
       return dep;
     });
 
-    // Upload files
+    // Upload files in parallel (concurrency = 8)
+    log(`[build] Uploading ${allFiles.length} files in parallel...`);
+    const CONCURRENCY = 8;
+    let imported = 0;
     let totalBytes = 0;
-    for (const relPath of allFiles) {
-      const absPath = path.join(outDir, relPath);
-      const stat    = fs.statSync(absPath);
-      const ct      = (mime.lookup(relPath) || "application/octet-stream") as string;
-      const hash    = crypto.createHash("sha256").update(fs.readFileSync(absPath)).digest("hex");
 
-      const { uploadUrl, objectPath } = await storage.getUploadUrl({ contentType: ct, ttlSec: 900 });
-      await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": ct }, body: fs.readFileSync(absPath) });
+    for (let i = 0; i < allFiles.length; i += CONCURRENCY) {
+      const chunk = allFiles.slice(i, i + CONCURRENCY);
+      await Promise.allSettled(chunk.map(async (relPath) => {
+        const absPath = path.join(outDir, relPath);
+        const stat    = fs.statSync(absPath);
+        const ct      = (mime.lookup(relPath) || "application/octet-stream") as string;
+        const hash    = crypto.createHash("sha256").update(fs.readFileSync(absPath)).digest("hex");
 
-      await db.insert(siteFilesTable).values({
-        siteId, filePath: relPath, objectPath, contentType: ct,
-        sizeBytes: stat.size, contentHash: hash, deploymentId: deployment.id,
-      });
-      totalBytes += stat.size;
+        const { uploadUrl, objectPath } = await storage.getUploadUrl({ contentType: ct, ttlSec: 900 });
+        await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": ct }, body: fs.readFileSync(absPath) });
+
+        await db.insert(siteFilesTable).values({
+          siteId, filePath: relPath, objectPath, contentType: ct,
+          sizeBytes: stat.size, contentHash: hash, deploymentId: deployment.id,
+        });
+        totalBytes += stat.size;
+        imported++;
+      }));
     }
 
     // Activate deployment

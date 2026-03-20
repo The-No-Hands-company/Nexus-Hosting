@@ -25,14 +25,44 @@ import logger from "../lib/logger";
 
 const router: IRouter = Router();
 
-// In-memory transfer tokens (TTL 24h)
-// In production: store in Redis with TTL
-const pendingTransfers = new Map<string, {
-  siteId: number;
-  fromUserId: string;
-  toEmail: string;
-  createdAt: number;
-}>();
+import { getRedisClient } from "../lib/redis";
+
+const TRANSFER_TTL = 24 * 60 * 60; // 24 hours in seconds
+const TRANSFER_PREFIX = "site_transfer:";
+
+async function storeTransfer(token: string, data: object): Promise<void> {
+  const redis = getRedisClient();
+  if (redis) {
+    await redis.set(`${TRANSFER_PREFIX}${token}`, JSON.stringify(data), "EX", TRANSFER_TTL);
+  }
+  // Always also store in memory as fallback when Redis is not available
+  _fallbackTransfers.set(token, { ...(data as any), createdAt: Date.now() });
+}
+
+async function getTransfer(token: string): Promise<{ siteId: number; fromUserId: string; toEmail: string; createdAt: number } | null> {
+  const redis = getRedisClient();
+  if (redis) {
+    const raw = await redis.get(`${TRANSFER_PREFIX}${token}`).catch(() => null);
+    if (raw) return JSON.parse(raw);
+  }
+  // Fallback to memory
+  const mem = _fallbackTransfers.get(token);
+  if (!mem) return null;
+  if (Date.now() - mem.createdAt > TRANSFER_TTL * 1000) {
+    _fallbackTransfers.delete(token);
+    return null;
+  }
+  return mem;
+}
+
+async function deleteTransfer(token: string): Promise<void> {
+  const redis = getRedisClient();
+  if (redis) await redis.del(`${TRANSFER_PREFIX}${token}`).catch(() => {});
+  _fallbackTransfers.delete(token);
+}
+
+// In-memory fallback when Redis is not available
+const _fallbackTransfers = new Map<string, { siteId: number; fromUserId: string; toEmail: string; createdAt: number }>();
 
 // ── Transfer ownership ─────────────────────────────────────────────────────────
 
@@ -56,14 +86,7 @@ router.post("/sites/:id/transfer", writeLimiter, asyncHandler(async (req: Reques
   if (!recipient) throw AppError.notFound(`No user found with email ${toEmail}. They must have an account first.`);
 
   const token = crypto.randomBytes(32).toString("base64url");
-  pendingTransfers.set(token, {
-    siteId, fromUserId: req.user.id, toEmail, createdAt: Date.now(),
-  });
-
-  // Clean up expired transfers
-  for (const [k, v] of pendingTransfers) {
-    if (Date.now() - v.createdAt > 24 * 60 * 60 * 1000) pendingTransfers.delete(k);
-  }
+  await storeTransfer(token, { siteId, fromUserId: req.user.id, toEmail, createdAt: Date.now() });
 
   logger.info({ siteId, from: req.user.id, to: toEmail }, "[transfer] Initiated");
 
@@ -85,13 +108,9 @@ router.post("/sites/:id/transfer/accept", writeLimiter, asyncHandler(async (req:
 
   const { token } = z.object({ token: z.string() }).parse(req.body);
 
-  const transfer = pendingTransfers.get(token);
+  const transfer = await getTransfer(token);
   if (!transfer) throw AppError.notFound("Transfer token not found or expired");
   if (transfer.siteId !== siteId) throw AppError.badRequest("Token is for a different site");
-  if (Date.now() - transfer.createdAt > 24 * 60 * 60 * 1000) {
-    pendingTransfers.delete(token);
-    throw AppError.badRequest("Transfer token has expired", "TRANSFER_EXPIRED");
-  }
 
   if (req.user.email !== transfer.toEmail) {
     throw AppError.forbidden("This transfer was sent to a different email address");
@@ -101,7 +120,7 @@ router.post("/sites/:id/transfer/accept", writeLimiter, asyncHandler(async (req:
     .set({ ownerId: req.user.id, ownerEmail: req.user.email ?? "", ownerName: req.user.firstName ?? req.user.email ?? "" })
     .where(eq(sitesTable.id, siteId));
 
-  pendingTransfers.delete(token);
+  await deleteTransfer(token);
   invalidateSiteCache(siteId);
 
   logger.info({ siteId, newOwner: req.user.id }, "[transfer] Completed");

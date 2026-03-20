@@ -1,29 +1,17 @@
 /**
  * Email notification system.
  *
- * Sends transactional emails for platform events via any SMTP provider
- * (Resend, Postmark, SendGrid SMTP, AWS SES, self-hosted Postfix, etc.).
+ * All emails go through a persistent queue (email_queue table) with
+ * exponential backoff retry. SMTP failures never cause request failures.
  *
- * Configuration (all optional — emails are silently skipped if not configured):
- *   SMTP_HOST        — SMTP server hostname (e.g. smtp.resend.com)
- *   SMTP_PORT        — SMTP port (default: 587)
- *   SMTP_SECURE      — "true" for TLS on port 465
- *   SMTP_USER        — SMTP username
- *   SMTP_PASS        — SMTP password / API key
- *   EMAIL_FROM       — From address (default: noreply@<PUBLIC_DOMAIN>)
- *   EMAIL_FROM_NAME  — From display name (default: FedHost)
- *
- * Events:
- *   - deploy.success   — site deployed successfully
- *   - deploy.failed    — deployment failed
- *   - cert.expiring    — TLS certificate expiring in <30 days
- *   - cert.renewed     — TLS certificate renewed
- *   - node.offline     — federation node went offline
- *   - invitation       — user invited to a site
- *   - site.deleted     — site deleted (confirmation)
+ * Queue processing runs every 30 seconds. Failed emails are retried up to
+ * 5 times with delays: 1m → 5m → 15m → 1h → 6h. After 5 failures the
+ * email is marked failed and never retried.
  */
 
 import nodemailer, { type Transporter } from "nodemailer";
+import { db, emailQueueTable } from "@workspace/db";
+import { isNull, lte, lt, eq, sql } from "drizzle-orm";
 import logger from "./logger";
 
 // ── Transport ──────────────────────────────────────────────────────────────────
@@ -34,24 +22,15 @@ function getTransporter(): Transporter | null {
   if (transporter) return transporter;
 
   const host = process.env.SMTP_HOST;
-  if (!host) return null; // email not configured — all sends are no-ops
+  if (!host) return null;
 
   const port   = parseInt(process.env.SMTP_PORT ?? "587", 10);
   const secure = process.env.SMTP_SECURE === "true";
 
   transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: process.env.SMTP_USER ? {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS ?? "",
-    } : undefined,
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
-    rateDelta: 1000,
-    rateLimit: 10,
+    host, port, secure,
+    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS ?? "" } : undefined,
+    pool: true, maxConnections: 5, maxMessages: 100,
   });
 
   return transporter;
@@ -64,18 +43,76 @@ function fromAddress(): string {
   return `"${name}" <${addr}>`;
 }
 
-async function sendMail(opts: { to: string; subject: string; html: string; text: string }): Promise<boolean> {
-  const t = getTransporter();
-  if (!t) return false; // silently skip — SMTP not configured
+// Backoff delays per attempt (ms)
+const BACKOFF = [60_000, 300_000, 900_000, 3_600_000, 21_600_000];
 
+/** Enqueue an email. Returns immediately — actual sending is async. */
+async function enqueue(opts: { to: string; subject: string; html: string; text: string }): Promise<void> {
+  if (!process.env.SMTP_HOST) return; // email not configured, skip silently
   try {
-    await t.sendMail({ from: fromAddress(), ...opts });
-    logger.info({ to: opts.to, subject: opts.subject }, "[email] Sent");
-    return true;
+    await db.insert(emailQueueTable).values(opts);
   } catch (err) {
-    logger.error({ err, to: opts.to, subject: opts.subject }, "[email] Failed to send");
-    return false;
+    logger.error({ err, to: opts.to }, "[email] Failed to enqueue");
   }
+}
+
+/** Process pending emails from the queue. Called by the email flush job. */
+export async function processEmailQueue(): Promise<void> {
+  const t = getTransporter();
+  if (!t) return;
+
+  const pending = await db
+    .select()
+    .from(emailQueueTable)
+    .where(sql`${emailQueueTable.sentAt} IS NULL AND ${emailQueueTable.failedAt} IS NULL AND ${emailQueueTable.nextAttempt} <= NOW()`)
+    .limit(20);
+
+  for (const item of pending) {
+    try {
+      await t.sendMail({ from: fromAddress(), to: item.to, subject: item.subject, html: item.html, text: item.text });
+
+      await db.update(emailQueueTable)
+        .set({ sentAt: new Date() })
+        .where(eq(emailQueueTable.id, item.id));
+
+      logger.info({ to: item.to, subject: item.subject }, "[email] Sent");
+    } catch (err: any) {
+      const attempts = item.attempts + 1;
+      if (attempts >= item.maxAttempts) {
+        await db.update(emailQueueTable)
+          .set({ attempts, failedAt: new Date(), error: err.message })
+          .where(eq(emailQueueTable.id, item.id));
+        logger.error({ to: item.to, attempts }, "[email] Permanently failed");
+      } else {
+        const delay = BACKOFF[attempts - 1] ?? BACKOFF[BACKOFF.length - 1]!;
+        const nextAttempt = new Date(Date.now() + delay);
+        await db.update(emailQueueTable)
+          .set({ attempts, nextAttempt, error: err.message })
+          .where(eq(emailQueueTable.id, item.id));
+        logger.warn({ to: item.to, attempts, nextAttemptIn: delay }, "[email] Retrying");
+      }
+    }
+  }
+}
+
+// Queue flush timer
+let emailTimer: NodeJS.Timeout | null = null;
+
+export function startEmailQueue(): void {
+  if (!process.env.SMTP_HOST) return;
+  processEmailQueue().catch(() => {});
+  emailTimer = setInterval(() => processEmailQueue().catch(() => {}), 30_000);
+  logger.info("[email] Queue processor started");
+}
+
+export function stopEmailQueue(): void {
+  if (emailTimer) { clearInterval(emailTimer); emailTimer = null; }
+}
+
+// sendMail is now just enqueue
+async function sendMail(opts: { to: string; subject: string; html: string; text: string }): Promise<boolean> {
+  await enqueue(opts);
+  return true;
 }
 
 // ── HTML layout ───────────────────────────────────────────────────────────────

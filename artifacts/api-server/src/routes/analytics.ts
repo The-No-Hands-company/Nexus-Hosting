@@ -122,4 +122,87 @@ router.get("/admin/analytics", requireAdmin, asyncHandler(async (req: Request, r
   });
 }));
 
+/**
+ * GET /api/sites/:id/analytics/export?period=7d|30d|all
+ * Download raw analytics data as CSV.
+ */
+router.get("/sites/:id/analytics/export", asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+  const siteId = parseInt(req.params.id as string, 10);
+  if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
+
+  const [site] = await db.select({ ownerId: sitesTable.ownerId, domain: sitesTable.domain })
+    .from(sitesTable).where(eq(sitesTable.id, siteId));
+  if (!site) throw AppError.notFound("Site not found");
+  if (site.ownerId !== req.user.id) throw AppError.forbidden();
+
+  const period = (req.query.period as string) || "30d";
+  const now = new Date();
+  let since: Date | null = null;
+  if (period === "7d")  since = new Date(now.getTime() - 7  * 86400_000);
+  if (period === "30d") since = new Date(now.getTime() - 30 * 86400_000);
+
+  const rows = await db
+    .select()
+    .from(siteAnalyticsTable)
+    .where(
+      since
+        ? and(eq(siteAnalyticsTable.siteId, siteId), gte(siteAnalyticsTable.hour, since))
+        : eq(siteAnalyticsTable.siteId, siteId)
+    )
+    .orderBy(siteAnalyticsTable.hour);
+
+  const csv = [
+    "hour,hits,bytes_served,unique_ips",
+    ...rows.map(r =>
+      `${r.hour?.toISOString() ?? ""},${r.hits},${r.bytesServed},${r.uniqueIps}`
+    ),
+  ].join("\n");
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="${site.domain}-analytics-${period}.csv"`);
+  res.send(csv);
+}));
+
+/**
+ * GET /api/sites/:id/analytics/referrers?period=7d
+ * Top referrers aggregated across the period.
+ */
+router.get("/sites/:id/analytics/referrers", asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+  const siteId = parseInt(req.params.id as string, 10);
+  if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
+
+  const [site] = await db.select({ ownerId: sitesTable.ownerId })
+    .from(sitesTable).where(eq(sitesTable.id, siteId));
+  if (!site) throw AppError.notFound("Site not found");
+  if (site.ownerId !== req.user.id) throw AppError.forbidden();
+
+  const period = (req.query.period as string) || "7d";
+  const since  = new Date(Date.now() - (period === "30d" ? 30 : 7) * 86400_000);
+
+  const rows = await db
+    .select({ topReferrers: siteAnalyticsTable.topReferrers })
+    .from(siteAnalyticsTable)
+    .where(and(eq(siteAnalyticsTable.siteId, siteId), gte(siteAnalyticsTable.hour, since)));
+
+  // Aggregate referrer counts from JSONB arrays across all rows
+  const counts: Record<string, number> = {};
+  for (const row of rows) {
+    const refs = row.topReferrers as Array<{ referrer: string; count: number }> | null;
+    if (!refs) continue;
+    for (const { referrer, count } of refs) {
+      if (!referrer) continue;
+      counts[referrer] = (counts[referrer] ?? 0) + count;
+    }
+  }
+
+  const sorted = Object.entries(counts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 50)
+    .map(([referrer, hits]) => ({ referrer, hits }));
+
+  res.json({ period, referrers: sorted });
+}));
+
 export default router;

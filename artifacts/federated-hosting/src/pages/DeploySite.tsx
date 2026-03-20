@@ -258,12 +258,16 @@ export default function DeploySite() {
     if (!isAuthenticated) { login(); return; }
     setIsDeploying(true);
     try {
-      const result = await apiFetch<{replication?:{peers:number;synced:number}}>(`/sites/${siteId}/deploy`,{method:"POST"});
+      const result = await apiFetch<{replication?:{peers:number;synced:number}}>(`/sites/${siteId}/deploy`,{
+        method:"POST",
+        body: JSON.stringify({ environment }),
+      });
       await Promise.all([refetchFiles(),refetchDeployments()]);
       setUploadQueue([]);
       const rep = result.replication;
       const repMsg = rep&&rep.peers>0?` Replicated to ${rep.synced}/${rep.peers} peers.`:"";
-      toast({title:"Deployed!",description:`Your site is now live.${repMsg}`});
+      const envLabel = environment === "staging" ? " (staging)" : "";
+      toast({title:"Deployed!",description:`Your site is now live${envLabel}.${repMsg}`});
     } catch(err:any) {
       toast({title:"Deploy failed",description:err.message,variant:"destructive"});
     } finally { setIsDeploying(false); }

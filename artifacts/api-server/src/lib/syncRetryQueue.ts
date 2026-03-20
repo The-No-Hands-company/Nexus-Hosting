@@ -203,3 +203,7 @@ export function getSyncQueueStats() {
     }, {}),
   };
 }
+
+export function getSyncQueueDepth(): number {
+  return syncQueue.size;
+}

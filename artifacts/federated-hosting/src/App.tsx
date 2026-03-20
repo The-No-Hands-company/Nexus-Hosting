@@ -25,7 +25,10 @@ const AdminPage      = lazy(() => import("@/pages/Admin"));
 const Marketplace    = lazy(() => import("@/pages/Marketplace"));
 const ApiDocs        = lazy(() => import("@/pages/ApiDocs"));
 const SiteSettings   = lazy(() => import("@/pages/SiteSettings"));
-const UsageDashboard = lazy(() => import("@/pages/UsageDashboard"));
+const UsageDashboard      = lazy(() => import("@/pages/UsageDashboard"));
+const TwoFactorSettings   = lazy(() => import("@/pages/TwoFactorSettings"));
+const FormInbox           = lazy(() => import("@/pages/FormInbox"));
+const BuildHistory        = lazy(() => import("@/pages/BuildHistory"));
 
 function onQueryError(error: unknown) {
   const err = error as { status?: number; message?: string };
@@ -76,6 +79,9 @@ function Router() {
             <Route path="/api-docs" component={ApiDocs} />
             <Route path="/sites/:id/settings" component={SiteSettings} />
             <Route path="/usage" component={UsageDashboard} />
+            <Route path="/settings/2fa" component={TwoFactorSettings} />
+            <Route path="/sites/:id/forms" component={FormInbox} />
+            <Route path="/sites/:id/builds" component={BuildHistory} />
             <Route component={NotFound} />
           </Switch>
         </Suspense>

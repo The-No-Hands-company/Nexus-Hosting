@@ -383,3 +383,35 @@ CREATE TABLE IF NOT EXISTS "totp_credentials" (
   "backup_codes" JSONB NOT NULL DEFAULT '[]',
   "enabled_at"   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
+
+-- ─── Email queue ──────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS "email_queue" (
+  "id"          SERIAL PRIMARY KEY,
+  "to"          TEXT    NOT NULL,
+  "subject"     TEXT    NOT NULL,
+  "html"        TEXT    NOT NULL,
+  "text"        TEXT    NOT NULL,
+  "attempts"    INTEGER NOT NULL DEFAULT 0,
+  "max_attempts" INTEGER NOT NULL DEFAULT 5,
+  "next_attempt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  "sent_at"     TIMESTAMP WITH TIME ZONE,
+  "failed_at"   TIMESTAMP WITH TIME ZONE,
+  "error"       TEXT,
+  "created_at"  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "email_queue_pending_idx"
+  ON "email_queue"("next_attempt")
+  WHERE "sent_at" IS NULL AND "failed_at" IS NULL;
+
+-- ─── Site health history ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS "site_health_checks" (
+  "id"          SERIAL PRIMARY KEY,
+  "site_id"     INTEGER NOT NULL REFERENCES "sites"("id") ON DELETE CASCADE,
+  "status"      TEXT    NOT NULL,
+  "http_status" INTEGER,
+  "response_ms" INTEGER,
+  "error"       TEXT,
+  "checked_at"  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "health_checks_site_time_idx"
+  ON "site_health_checks"("site_id", "checked_at" DESC);

@@ -9,6 +9,8 @@ import { getRedisClient, closeRedis } from "./lib/redis";
 import { startSyncRetryQueue, stopSyncRetryQueue } from "./lib/syncRetryQueue";
 import { startAcmeRenewalScheduler, stopAcmeRenewalScheduler } from "./lib/acme";
 import { startSiteHealthMonitor, stopSiteHealthMonitor } from "./lib/siteHealthMonitor";
+import { startMetricsCollector, stopMetricsCollector } from "./lib/metricsCollector";
+import { startEmailQueue, stopEmailQueue } from "./lib/email";
 import { startOrphanCleanup, stopOrphanCleanup } from "./lib/orphanCleanup";
 import { db, sessionsTable } from "@workspace/db";
 import { lt } from "drizzle-orm";
@@ -68,6 +70,8 @@ function gracefulShutdown(server: http.Server, signal: string): void {
       stopSyncRetryQueue();
       stopAcmeRenewalScheduler();
       stopSiteHealthMonitor();
+      stopMetricsCollector();
+      stopEmailQueue();
       stopOrphanCleanup();
       await closeRedis();
       const { pool } = await import("@workspace/db");
@@ -105,6 +109,8 @@ ensureLocalNode()
     startSyncRetryQueue();
     startAcmeRenewalScheduler();
     startSiteHealthMonitor();
+    startMetricsCollector();
+    startEmailQueue();
     startOrphanCleanup();
 
     // Initialise Redis connection (optional — falls back to in-memory if not configured)

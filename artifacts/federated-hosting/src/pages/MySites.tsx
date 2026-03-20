@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@workspace/auth-web";
 import { useSites } from "@/lib/apiHooks";
 import { Link } from "wouter";
-import { Globe, Upload, ExternalLink, Plus, LogIn, Eye, Clock, Zap, BarChart2, Settings } from "lucide-react";
+import { Globe, Upload, ExternalLink, Plus, LogIn, Eye, Clock, Zap, BarChart2, Settings, Inbox, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -192,13 +192,18 @@ export default function MySites() {
                       </Button>
                     </Link>
                     <Link href={`/sites/${site.id}/settings`}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-white/10 text-muted-foreground hover:text-white"
-                        title="Site settings"
-                      >
+                      <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white" title="Site settings">
                         <Settings className="w-3.5 h-3.5" />
+                      </Button>
+                    </Link>
+                    <Link href={`/sites/${site.id}/forms`}>
+                      <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white" title="Form submissions">
+                        <Inbox className="w-3.5 h-3.5" />
+                      </Button>
+                    </Link>
+                    <Link href={`/sites/${site.id}/builds`}>
+                      <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white" title="Build history">
+                        <GitBranch className="w-3.5 h-3.5" />
                       </Button>
                     </Link>
                     <a

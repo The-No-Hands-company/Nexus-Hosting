@@ -67,35 +67,88 @@ function renderPasswordGate(siteId: number, domain: string): string {
  * Supports: /exact, /blog/:slug, /old/* (splat)
  * Returns a match object with named params and splat, or null if no match.
  */
-function matchRedirectPattern(reqPath: string, pattern: string): Record<string, string> | null {
-  // Normalise
-  const req = reqPath.endsWith("/") && reqPath !== "/" ? reqPath.slice(0, -1) : reqPath;
-  const pat = pattern.endsWith("/") && pattern !== "/" ? pattern.slice(0, -1) : pattern;
+/**
+ * Match a request path (and optional query string) against a redirect source pattern.
+ *
+ * Supported patterns:
+ *   /exact                 — exact path match
+ *   /blog/:slug            — named :param segments
+ *   /old/*                 — splat (matches everything after prefix)
+ *   /page?utm_source=*     — query string matching (?key=value, ?key=* wildcard)
+ *   /path?!key             — query string negation (matches if key is absent)
+ *   ^/regex.*$             — raw regex (prefix with ^)
+ *
+ * Returns a params object on match, null on no match.
+ */
+function matchRedirectPattern(
+  reqPath: string,
+  reqQuery: string, // raw query string e.g. "utm_source=email&ref=abc"
+  pattern: string
+): Record<string, string> | null {
+  // ── Regex patterns (start with ^) ────────────────────────────────────────
+  if (pattern.startsWith("^")) {
+    try {
+      const re = new RegExp(pattern, "i");
+      const full = reqQuery ? `${reqPath}?${reqQuery}` : reqPath;
+      const m = full.match(re);
+      if (!m) return null;
+      return m.groups ?? {};
+    } catch { return null; }
+  }
+
+  // ── Split pattern into path and query parts ───────────────────────────────
+  const qMark = pattern.indexOf("?");
+  const pathPattern   = qMark === -1 ? pattern : pattern.slice(0, qMark);
+  const queryPattern  = qMark === -1 ? null : pattern.slice(qMark + 1);
+
+  // ── Path matching ─────────────────────────────────────────────────────────
+  const normReq = reqPath.endsWith("/") && reqPath !== "/" ? reqPath.slice(0, -1) : reqPath;
+  const normPat = pathPattern.endsWith("/") && pathPattern !== "/" ? pathPattern.slice(0, -1) : pathPattern;
 
   const params: Record<string, string> = {};
 
-  // Splat pattern: /prefix/*
-  if (pat.endsWith("/*")) {
-    const prefix = pat.slice(0, -2);
-    if (req === prefix || req.startsWith(prefix + "/")) {
-      params["*"] = req.slice(prefix.length + 1);
-      return params;
-    }
-    return null;
-  }
-
-  // Exact match with optional :param segments
-  const patParts = pat.split("/");
-  const reqParts = req.split("/");
-  if (patParts.length !== reqParts.length) return null;
-
-  for (let i = 0; i < patParts.length; i++) {
-    if (patParts[i]!.startsWith(":")) {
-      params[patParts[i]!.slice(1)] = decodeURIComponent(reqParts[i]!);
-    } else if (patParts[i] !== reqParts[i]) {
-      return null;
+  if (normPat.endsWith("/*")) {
+    const prefix = normPat.slice(0, -2);
+    if (normReq !== prefix && !normReq.startsWith(prefix + "/")) return null;
+    params["*"] = normReq.slice(prefix.length + 1);
+  } else {
+    const patParts = normPat.split("/");
+    const reqParts = normReq.split("/");
+    if (patParts.length !== reqParts.length) return null;
+    for (let i = 0; i < patParts.length; i++) {
+      if (patParts[i]!.startsWith(":")) {
+        params[patParts[i]!.slice(1)] = decodeURIComponent(reqParts[i]!);
+      } else if (patParts[i] !== reqParts[i]) {
+        return null;
+      }
     }
   }
+
+  // ── Query string matching ─────────────────────────────────────────────────
+  if (queryPattern) {
+    const actualQuery = new URLSearchParams(reqQuery);
+    const rules = queryPattern.split("&");
+    for (const rule of rules) {
+      if (rule.startsWith("!")) {
+        // Negation: key must be absent
+        if (actualQuery.has(rule.slice(1))) return null;
+      } else {
+        const eqIdx = rule.indexOf("=");
+        if (eqIdx === -1) {
+          // Key must be present (any value)
+          if (!actualQuery.has(rule)) return null;
+        } else {
+          const key = rule.slice(0, eqIdx);
+          const val = rule.slice(eqIdx + 1);
+          const actual = actualQuery.get(key);
+          if (actual === null) return null;
+          if (val !== "*" && val !== actual) return null;
+          if (val === "*") params[`q_${key}`] = actual; // capture wildcard query values
+        }
+      }
+    }
+  }
+
   return params;
 }
 
@@ -115,7 +168,7 @@ function applyCustomHeaders(
   rules: Array<{ path: string; name: string; value: string }>,
 ): void {
   for (const rule of rules) {
-    if (matchRedirectPattern(reqPath, rule.path) !== null) {
+    if (matchRedirectPattern(reqPath, "", rule.path) !== null) {
       // Only set safe headers — block headers that could break the response
       const lower = rule.name.toLowerCase();
       if (lower === "content-length" || lower === "transfer-encoding" || lower === "connection") continue;
@@ -186,7 +239,8 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
     .orderBy(siteRedirectRulesTable.position);
 
   for (const rule of redirectRules) {
-    const match = matchRedirectPattern(req.path, rule.src);
+    const rawQuery = typeof req.query === "object" ? new URLSearchParams(req.query as any).toString() : String(req.query ?? "");
+    const match = matchRedirectPattern(req.path, rawQuery, rule.src);
     if (match) {
       const dest = interpolateDest(rule.dest, match);
       if (rule.status === 200) {

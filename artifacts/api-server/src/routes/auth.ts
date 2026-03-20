@@ -1,5 +1,7 @@
 import * as oidc from "openid-client";
 import { Router, type IRouter, type Request, type Response } from "express";
+import crypto from "crypto";
+import { getRedisClient } from "../lib/redis";
 import {
   GetCurrentAuthUserResponse,
   ExchangeMobileAuthorizationCodeBody,
@@ -182,6 +184,32 @@ router.get("/callback", async (req: Request, res: Response) => {
     refresh_token: tokens.refresh_token,
     expires_at: tokens.expiresIn() ? now + tokens.expiresIn()! : claims.exp,
   };
+
+  // ── 2FA check ────────────────────────────────────────────────────────────
+  // If the user has TOTP enabled, create a pending session and redirect to
+  // the 2FA challenge page instead of completing login immediately.
+  const { totpCredentialsTable } = await import("@workspace/db");
+  const { eq: eqOp } = await import("drizzle-orm");
+  const [totpCred] = await db
+    .select({ id: totpCredentialsTable.id })
+    .from(totpCredentialsTable)
+    .where(eqOp(totpCredentialsTable.userId, dbUser.id));
+
+  if (totpCred) {
+    // Store pending session in Redis/DB with a short TTL (10 min)
+    const pendingSid = crypto.randomBytes(32).toString("hex");
+    const pendingKey = `pending_2fa:${pendingSid}`;
+    const redis = getRedisClient();
+    const payload = JSON.stringify(sessionData);
+    if (redis) {
+      await redis.set(pendingKey, payload, "EX", 600).catch(() => {});
+    }
+    // Fall back to regular session with 2fa_pending flag if Redis unavailable
+    const sid = await createSession({ ...sessionData, twoFactorPending: true, pendingSid });
+    setSessionCookie(res, sid);
+    res.redirect(`/2fa-challenge?next=${encodeURIComponent(returnTo)}`);
+    return;
+  }
 
   const sid = await createSession(sessionData);
   setSessionCookie(res, sid);
