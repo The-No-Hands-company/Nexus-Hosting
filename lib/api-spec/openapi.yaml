@@ -1,46 +1,94 @@
 openapi: 3.1.0
 info:
-  title: Api
-  version: 0.1.0
-  description: Federated Hosting API
+  title: Federated Hosting API
+  version: 0.7.0
+  description: |
+    Production-grade federated static site hosting network.
+    Every node exposes this API. Authentication uses session cookies (browser)
+    or Bearer API tokens (CLI / CI). Inter-node requests use Ed25519 signatures.
+  contact:
+    name: The No Hands Company
+    url: https://github.com/The-No-Hands-company/Federated-Hosting
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
 servers:
   - url: /api
-    description: Base API path
+    description: Local node API
+
 tags:
   - name: health
-    description: Health operations
+    description: Liveness and readiness probes
+  - name: auth
+    description: Browser OIDC and mobile auth
   - name: nodes
-    description: Federation node operations
+    description: Federation node registry
   - name: sites
-    description: Hosted site operations
-  - name: stats
-    description: Federation statistics
-  - name: Auth
-    description: Browser and mobile authentication endpoints
-  - name: Storage
-    description: Object storage upload and serving endpoints
+    description: Hosted site management
   - name: deploy
-    description: Site deployment and serving
+    description: File upload and deployment
+  - name: federation
+    description: Inter-node federation protocol
+  - name: gossip
+    description: Peer discovery via gossip
+  - name: analytics
+    description: Site traffic analytics
+  - name: tokens
+    description: Long-lived API tokens
+  - name: access
+    description: Site membership and visibility
+  - name: domains
+    description: Custom domain management
+  - name: admin
+    description: Node operator dashboard
+  - name: capacity
+    description: Storage and bandwidth tracking
+  - name: storage
+    description: Object storage endpoints
 
 paths:
-  /healthz:
+
+  # ── Health ──────────────────────────────────────────────────────────────────
+
+  /health:
     get:
       operationId: healthCheck
       tags: [health]
-      summary: Health check
+      summary: Full health check with service dependencies
       responses:
         "200":
-          description: Healthy
+          description: Health status
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /health/live:
+    get:
+      operationId: livenessProbe
+      tags: [health]
+      summary: Kubernetes liveness probe
+      responses:
+        "200":
+          description: Node is alive
+
+  /health/ready:
+    get:
+      operationId: readinessProbe
+      tags: [health]
+      summary: Kubernetes readiness probe
+      responses:
+        "200":
+          description: Node is ready to serve traffic
+        "503":
+          description: Node not ready
+
   /stats:
     get:
       operationId: getFederationStats
-      tags: [stats]
-      summary: Get federation statistics
+      tags: [nodes]
+      summary: Network-wide federation statistics
       responses:
         "200":
           description: Federation statistics
@@ -49,20 +97,178 @@ paths:
               schema:
                 $ref: "#/components/schemas/FederationStats"
 
-  /nodes:
+  # ── Auth ────────────────────────────────────────────────────────────────────
+
+  /auth/user:
     get:
-      operationId: listNodes
-      tags: [nodes]
-      summary: List all nodes
+      operationId: getCurrentAuthUser
+      tags: [auth]
+      summary: Get the currently authenticated user
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
       responses:
         "200":
-          description: List of nodes
+          description: Auth status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetCurrentAuthUserResponse"
+
+  /login:
+    get:
+      operationId: beginBrowserLogin
+      tags: [auth]
+      summary: Start the browser OIDC login flow
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to OIDC authorization endpoint
+
+  /callback:
+    get:
+      operationId: handleBrowserLoginCallback
+      tags: [auth]
+      summary: Complete the browser OIDC login flow
+      responses:
+        "302":
+          description: Redirect to returnTo or /api/login on failure
+
+  /logout:
+    get:
+      operationId: logoutBrowserSession
+      tags: [auth]
+      summary: Clear session and begin OIDC logout
+      responses:
+        "302":
+          description: Redirect to OIDC logout URL
+
+  /mobile-auth/token-exchange:
+    post:
+      operationId: exchangeMobileAuthorizationCode
+      tags: [auth]
+      summary: Exchange a mobile OIDC code for a session token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeBody"
+      responses:
+        "200":
+          description: Session token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /mobile-auth/logout:
+    post:
+      operationId: logoutMobileSession
+      tags: [auth]
+      summary: Revoke a mobile session token
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutMobileSessionResponse"
+
+  # ── API Tokens ──────────────────────────────────────────────────────────────
+
+  /tokens:
+    get:
+      operationId: listTokens
+      tags: [tokens]
+      summary: List active API tokens for the current user
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      responses:
+        "200":
+          description: List of tokens (hashes never returned)
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Node"
+                  $ref: "#/components/schemas/ApiToken"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createToken
+      tags: [tokens]
+      summary: Create a new API token (plaintext returned once)
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTokenBody"
+      responses:
+        "201":
+          description: Token created — plaintext in `token` field, shown once only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedToken"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /tokens/{id}:
+    delete:
+      operationId: revokeToken
+      tags: [tokens]
+      summary: Revoke an API token
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Token revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Nodes ───────────────────────────────────────────────────────────────────
+
+  /nodes:
+    get:
+      operationId: listNodes
+      tags: [nodes]
+      summary: List all federation nodes (paginated)
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Paginated node list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedNodes"
     post:
       operationId: createNode
       tags: [nodes]
@@ -75,17 +281,13 @@ paths:
               $ref: "#/components/schemas/CreateNodeBody"
       responses:
         "201":
-          description: Created node
+          description: Node registered
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Node"
         "400":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequest"
 
   /nodes/{id}:
     get:
@@ -93,11 +295,7 @@ paths:
       tags: [nodes]
       summary: Get node by ID
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/IdPath"
       responses:
         "200":
           description: Node details
@@ -106,21 +304,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Node"
         "404":
-          description: Node not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
     patch:
       operationId: updateNode
       tags: [nodes]
       summary: Update a node
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
@@ -135,45 +325,86 @@ paths:
               schema:
                 $ref: "#/components/schemas/Node"
         "404":
-          description: Node not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteNode
       tags: [nodes]
       summary: Remove a node from the federation
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/IdPath"
       responses:
         "204":
           description: Node removed
         "404":
-          description: Node not found
+          $ref: "#/components/responses/NotFound"
+
+  /nodes/{id}/generate-keys:
+    post:
+      operationId: generateNodeKeys
+      tags: [nodes]
+      summary: Generate or rotate Ed25519 key pair for a node
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: New key pair generated (private key stored, not returned)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                type: object
+                properties:
+                  nodeId:
+                    type: integer
+                  publicKey:
+                    type: string
+                  message:
+                    type: string
+
+  /nodes/{id}/capacity:
+    get:
+      operationId: getNodeCapacity
+      tags: [capacity]
+      summary: Get capacity stats for a specific node
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Node capacity details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeCapacity"
+
+  # ── Sites ───────────────────────────────────────────────────────────────────
 
   /sites:
     get:
       operationId: listSites
       tags: [sites]
-      summary: List all sites
+      summary: List all sites (paginated, filterable)
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, suspended, migrating]
+        - name: ownerId
+          in: query
+          schema:
+            type: string
       responses:
         "200":
-          description: List of sites
+          description: Paginated site list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Site"
+                $ref: "#/components/schemas/PaginatedSites"
     post:
       operationId: createSite
       tags: [sites]
@@ -186,17 +417,15 @@ paths:
               $ref: "#/components/schemas/CreateSiteBody"
       responses:
         "201":
-          description: Created site
+          description: Site registered
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Site"
         "400":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /sites/{id}:
     get:
@@ -204,11 +433,7 @@ paths:
       tags: [sites]
       summary: Get site by ID
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/IdPath"
       responses:
         "200":
           description: Site details
@@ -217,21 +442,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Site"
         "404":
-          description: Site not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
     patch:
       operationId: updateSite
       tags: [sites]
-      summary: Update a site
+      summary: Update site metadata
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
@@ -246,42 +463,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Site"
         "404":
-          description: Site not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteSite
       tags: [sites]
-      summary: Remove a site from the federation
+      summary: Delete a site and all its files
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/IdPath"
       responses:
         "204":
-          description: Site removed
+          description: Site deleted
         "404":
-          description: Site not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
+
+  # ── Deployment ──────────────────────────────────────────────────────────────
 
   /sites/{id}/files/upload-url:
     post:
       operationId: getSiteFileUploadUrl
       tags: [deploy]
-      summary: Get presigned URL to upload a site file
+      summary: Get a presigned URL to upload a site file
+      security:
+        - sessionAuth: []
+        - bearerToken: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
@@ -296,29 +502,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/SiteFileUploadUrlResponse"
         "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Site not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
 
   /sites/{id}/files:
+    get:
+      operationId: listSiteFiles
+      tags: [deploy]
+      summary: List all files registered for a site
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: List of site files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SiteFile"
     post:
       operationId: registerSiteFile
       tags: [deploy]
       summary: Register an uploaded file for a site
+      security:
+        - sessionAuth: []
+        - bearerToken: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
@@ -333,76 +545,40 @@ paths:
               schema:
                 $ref: "#/components/schemas/SiteFile"
         "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    get:
-      operationId: listSiteFiles
-      tags: [deploy]
-      summary: List files for a site
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: List of site files
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/SiteFile"
+          $ref: "#/components/responses/Unauthorized"
 
   /sites/{id}/deploy:
     post:
       operationId: deploySite
       tags: [deploy]
-      summary: Activate a deployment for a site
+      summary: Atomically deploy all pending files and notify federation peers
+      security:
+        - sessionAuth: []
+        - bearerToken: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/IdPath"
       responses:
         "200":
-          description: Deployment activated
+          description: Deployment activated with replication results
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SiteDeployment"
+                $ref: "#/components/schemas/DeployResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Site not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Unauthorized"
 
   /sites/{id}/deployments:
     get:
       operationId: listSiteDeployments
       tags: [deploy]
-      summary: List deployments for a site
+      summary: List deployment history for a site
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/IdPath"
       responses:
         "200":
-          description: List of deployments
+          description: Deployment history
           content:
             application/json:
               schema:
@@ -410,103 +586,709 @@ paths:
                 items:
                   $ref: "#/components/schemas/SiteDeployment"
 
-  /auth/user:
-    get:
-      tags: [Auth]
-      operationId: getCurrentAuthUser
-      summary: Get the currently authenticated user
+  /sites/{id}/deployments/{depId}/rollback:
+    post:
+      operationId: rollbackDeployment
+      tags: [deploy]
+      summary: Roll back to a specific previous deployment version
+      description: |
+        Creates a new active deployment pointing to the files from the target
+        deployment. The current active deployment is marked as rolled_back.
+        History is fully preserved — rollback is a forward operation.
+      security:
+        - sessionAuth: []
+        - bearerToken: []
       parameters:
-        - $ref: "#/components/parameters/AuthorizationSessionHeader"
-        - $ref: "#/components/parameters/SessionCookie"
+        - $ref: "#/components/parameters/IdPath"
+        - name: depId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the deployment to roll back to
       responses:
         "200":
-          description: Auth status resolved successfully
+          description: Rollback successful — new deployment record created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GetCurrentAuthUserResponse"
+                allOf:
+                  - $ref: "#/components/schemas/SiteDeployment"
+                  - type: object
+                    properties:
+                      rolledBackFrom:
+                        type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
-  /login:
+  # ── Access Control ──────────────────────────────────────────────────────────
+
+  /sites/{id}/members:
     get:
-      tags: [Auth]
-      operationId: beginBrowserLogin
-      summary: Start the browser OIDC login flow
+      operationId: listSiteMembers
+      tags: [access]
+      summary: List team members for a site
+      security:
+        - sessionAuth: []
+        - bearerToken: []
       parameters:
-        - name: returnTo
-          in: query
-          required: false
-          schema:
-            type: string
+        - $ref: "#/components/parameters/IdPath"
       responses:
-        "302":
-          description: Redirect to the OIDC authorization endpoint
-
-  /callback:
-    get:
-      tags: [Auth]
-      operationId: handleBrowserLoginCallback
-      summary: Complete the browser OIDC login flow
-      responses:
-        "302":
-          description: Redirect to returnTo or /api/login on failure
-
-  /logout:
-    get:
-      tags: [Auth]
-      operationId: logoutBrowserSession
-      summary: Clear session and begin OIDC logout
-      parameters:
-        - $ref: "#/components/parameters/AuthorizationSessionHeader"
-        - $ref: "#/components/parameters/SessionCookie"
-      responses:
-        "302":
-          description: Redirect to OIDC logout URL
-
-  /mobile-auth/token-exchange:
+        "200":
+          description: Site members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SiteMember"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
-      tags: [Auth]
-      operationId: exchangeMobileAuthorizationCode
-      summary: Exchange a mobile OIDC code for a session token
+      operationId: addSiteMember
+      tags: [access]
+      summary: Add a user to a site
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeBody"
+              $ref: "#/components/schemas/AddMemberBody"
       responses:
-        "200":
-          description: Session created
+        "201":
+          description: Member added
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeResponse"
-        "400":
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/SiteMember"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
-  /mobile-auth/logout:
-    post:
-      tags: [Auth]
-      operationId: logoutMobileSession
-      summary: Delete a mobile session token
+  /sites/{id}/members/{memberId}:
+    patch:
+      operationId: updateSiteMember
+      tags: [access]
+      summary: Update a team member's role
+      security:
+        - sessionAuth: []
+        - bearerToken: []
       parameters:
-        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/IdPath"
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [editor, viewer]
       responses:
         "200":
-          description: Logged out
+          description: Member updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LogoutMobileSessionResponse"
+                $ref: "#/components/schemas/SiteMember"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      operationId: removeSiteMember
+      tags: [access]
+      summary: Remove a team member from a site
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Member removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /sites/{id}/visibility:
+    patch:
+      operationId: updateSiteVisibility
+      tags: [access]
+      summary: Set site visibility (public / private / password-protected)
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVisibilityBody"
+      responses:
+        "200":
+          description: Visibility updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  visibility:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /sites/{id}/unlock:
+    post:
+      operationId: unlockSite
+      tags: [access]
+      summary: Verify a site password and set an unlock cookie
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Password correct — unlock cookie set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unlocked:
+                    type: boolean
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ── Custom Domains ──────────────────────────────────────────────────────────
+
+  /sites/{id}/domains:
+    get:
+      operationId: listCustomDomains
+      tags: [domains]
+      summary: List custom domains for a site
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Custom domains
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CustomDomain"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: addCustomDomain
+      tags: [domains]
+      summary: Add a custom domain and get DNS verification instructions
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain]
+              properties:
+                domain:
+                  type: string
+                  example: "www.mysite.com"
+      responses:
+        "201":
+          description: Domain added with DNS instructions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomDomainWithInstructions"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /domains/{id}/verify:
+    post:
+      operationId: verifyCustomDomain
+      tags: [domains]
+      summary: Trigger a DNS TXT verification check for a domain
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verified:
+                    type: boolean
+                  domain:
+                    type: string
+                  status:
+                    type: string
+                  lastError:
+                    type: ["string", "null"]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /domains/{id}:
+    delete:
+      operationId: deleteCustomDomain
+      tags: [domains]
+      summary: Remove a custom domain from a site
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+      responses:
+        "204":
+          description: Domain removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ── Analytics ───────────────────────────────────────────────────────────────
+
+  /sites/{id}/analytics:
+    get:
+      operationId: getSiteAnalytics
+      tags: [analytics]
+      summary: Get per-site analytics for a time period
+      parameters:
+        - $ref: "#/components/parameters/IdPath"
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: ["24h", "7d", "30d"]
+            default: "24h"
+      responses:
+        "200":
+          description: Analytics data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteAnalyticsResponse"
+
+  /admin/analytics:
+    get:
+      operationId: getAdminAnalytics
+      tags: [analytics]
+      summary: Network-wide analytics aggregate (operator only)
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      responses:
+        "200":
+          description: Network analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnalyticsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Admin ───────────────────────────────────────────────────────────────────
+
+  /admin/overview:
+    get:
+      operationId: getAdminOverview
+      tags: [admin]
+      summary: Full node operator dashboard data
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      responses:
+        "200":
+          description: Admin overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/node:
+    patch:
+      operationId: updateNodeSettings
+      tags: [admin]
+      summary: Update local node operator settings
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNodeSettingsBody"
+      responses:
+        "200":
+          description: Updated node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/users:
+    get:
+      operationId: listAdminUsers
+      tags: [admin]
+      summary: List all registered users (paginated)
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Paginated user list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedUsers"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/sites:
+    get:
+      operationId: listAdminSites
+      tags: [admin]
+      summary: List all sites with owner info (paginated)
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Paginated site list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedSites"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Capacity ─────────────────────────────────────────────────────────────────
+
+  /capacity/summary:
+    get:
+      operationId: getCapacitySummary
+      tags: [capacity]
+      summary: Network-wide storage and bandwidth summary
+      responses:
+        "200":
+          description: Capacity summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapacitySummary"
+
+  # ── Federation Protocol ──────────────────────────────────────────────────────
+
+  /federation/meta:
+    get:
+      operationId: getFederationMeta
+      tags: [federation]
+      summary: Local node federation metadata
+      responses:
+        "200":
+          description: Node metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FederationMeta"
+
+  /federation/handshake:
+    post:
+      operationId: initiateHandshake
+      tags: [federation]
+      summary: Initiate a signed handshake with a remote node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetNodeUrl]
+              properties:
+                targetNodeUrl:
+                  type: string
+                  example: "https://node2.example.com"
+      responses:
+        "200":
+          description: Handshake result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HandshakeResult"
+
+  /federation/ping:
+    post:
+      operationId: federationPing
+      tags: [federation]
+      summary: Receive a signed ping from a remote node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FederationPingBody"
+      responses:
+        "200":
+          description: Ping verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verified:
+                    type: boolean
+                  protocol:
+                    type: string
+                  challenge:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /federation/sync:
+    post:
+      operationId: federationSync
+      tags: [federation]
+      summary: |
+        Receive a site_sync notification from a peer — fetch the file manifest
+        and replicate all files to local object storage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [siteDomain, deploymentId]
+              properties:
+                siteDomain:
+                  type: string
+                deploymentId:
+                  type: integer
+                timestamp:
+                  type: string
+      responses:
+        "200":
+          description: Sync complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FederationSyncResult"
+        "202":
+          description: Queued (manifest temporarily unavailable)
+
+  /federation/manifest/{siteDomain}:
+    get:
+      operationId: getFederationManifest
+      tags: [federation]
+      summary: |
+        Get the signed file manifest for a site. Used by peers to replicate
+        files. Returns presigned download URLs valid for 1 hour.
+      parameters:
+        - name: siteDomain
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Signed file manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FederationManifest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /federation/peers:
+    get:
+      operationId: listFederationPeers
+      tags: [federation]
+      summary: List known federation peers (paginated)
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Paginated peer list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedNodes"
+
+  /federation/events:
+    get:
+      operationId: listFederationEvents
+      tags: [federation]
+      summary: Federation event log (paginated, newest first)
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Paginated event log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedEvents"
+
+  # ── Gossip ───────────────────────────────────────────────────────────────────
+
+  /federation/gossip:
+    get:
+      operationId: getGossipPeers
+      tags: [gossip]
+      summary: Return this node's known peer list for gossip consumption
+      responses:
+        "200":
+          description: Known peers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GossipResponse"
+
+  /federation/gossip/push:
+    post:
+      operationId: receiveGossip
+      tags: [gossip]
+      summary: Receive a peer list from a remote node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GossipPushBody"
+      responses:
+        "200":
+          description: Gossip processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+                  newPeers:
+                    type: integer
+
+  /federation/gossip/discover:
+    post:
+      operationId: triggerGossipDiscover
+      tags: [gossip]
+      summary: Manually trigger a gossip discovery cycle across all active peers
+      security:
+        - sessionAuth: []
+        - bearerToken: []
+      responses:
+        "200":
+          description: Discovery results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  peersQueried:
+                    type: integer
+                  totalNewNodes:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /federation/bootstrap:
+    get:
+      operationId: getBootstrapNodes
+      tags: [gossip]
+      summary: |
+        Public bootstrap node registry. Returns healthy, recently-verified peers
+        that new nodes can use to seed their peer list.
+      responses:
+        "200":
+          description: Bootstrap node list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootstrapResponse"
+
+  # ── Storage ──────────────────────────────────────────────────────────────────
 
   /storage/uploads/request-url:
     post:
-      tags: [Storage]
       operationId: requestUploadUrl
-      summary: Request a presigned URL for file upload
+      tags: [storage]
+      summary: Request a presigned URL for direct file upload
       requestBody:
         required: true
         content:
@@ -515,22 +1297,16 @@ paths:
               $ref: "#/components/schemas/RequestUploadUrlBody"
       responses:
         "200":
-          description: Presigned upload URL generated
+          description: Presigned upload URL
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RequestUploadUrlResponse"
-        "400":
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
   /storage/public-objects/{filePath}:
     get:
-      tags: [Storage]
       operationId: getPublicObject
+      tags: [storage]
       summary: Serve a public asset
       parameters:
         - name: filePath
@@ -547,68 +1323,137 @@ paths:
                 type: string
                 format: binary
 
-  /storage/objects/{objectPath}:
-    get:
-      tags: [Storage]
-      operationId: getStorageObject
-      summary: Serve an object entity
-      parameters:
-        - name: objectPath
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Object content
-          content:
-            "*/*":
-              schema:
-                type: string
-                format: binary
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
 components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: sid
+      description: Browser session cookie set by /login flow
+    bearerToken:
+      type: http
+      scheme: bearer
+      description: API token created via POST /tokens (prefix fh_)
+
   parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    PageParam:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
     AuthorizationSessionHeader:
       name: Authorization
       in: header
       required: false
-      description: Opaque session token — Bearer <sid>
+      description: "Bearer <sid> — session token"
       schema:
         type: string
     SessionCookie:
       name: sid
       in: cookie
       required: false
-      description: Browser session cookie
       schema:
         type: string
 
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Resource already exists
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
   schemas:
-    HealthStatus:
-      type: object
-      properties:
-        status:
-          type: string
-      required:
-        - status
 
     ErrorResponse:
       type: object
+      required: [message, code]
       properties:
-        error:
+        message:
           type: string
-      required:
-        - error
+        code:
+          type: string
+        status:
+          type: integer
+
+    PaginationMeta:
+      type: object
+      required: [total, page, limit, totalPages, hasNextPage, hasPrevPage]
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+        hasNextPage:
+          type: boolean
+        hasPrevPage:
+          type: boolean
+
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, error]
+        uptime:
+          type: number
+        version:
+          type: string
+        environment:
+          type: string
+        services:
+          type: object
 
     FederationStats:
       type: object
+      required: [totalNodes, activeNodes, totalSites, activeSites, totalBandwidthGb, totalStorageGb, uptimePercent]
       properties:
         totalNodes:
           type: integer
@@ -624,17 +1469,10 @@ components:
           type: number
         uptimePercent:
           type: number
-      required:
-        - totalNodes
-        - activeNodes
-        - totalSites
-        - activeSites
-        - totalBandwidthGb
-        - totalStorageGb
-        - uptimePercent
 
     Node:
       type: object
+      required: [id, name, domain, status, region, operatorName, operatorEmail, storageCapacityGb, bandwidthCapacityGb, joinedAt]
       properties:
         id:
           type: integer
@@ -663,29 +1501,29 @@ components:
           type: integer
         publicKey:
           type: ["string", "null"]
+        isLocalNode:
+          type: integer
         joinedAt:
           type: string
         lastSeenAt:
           type: ["string", "null"]
-      required:
-        - id
-        - name
-        - domain
-        - description
-        - status
-        - region
-        - operatorName
-        - operatorEmail
-        - storageCapacityGb
-        - bandwidthCapacityGb
-        - uptimePercent
-        - siteCount
-        - publicKey
-        - joinedAt
-        - lastSeenAt
+        verifiedAt:
+          type: ["string", "null"]
+
+    PaginatedNodes:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Node"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
 
     CreateNodeBody:
       type: object
+      required: [name, domain, region, operatorName, operatorEmail, storageCapacityGb, bandwidthCapacityGb]
       properties:
         name:
           type: string
@@ -705,14 +1543,6 @@ components:
           type: number
         publicKey:
           type: string
-      required:
-        - name
-        - domain
-        - region
-        - operatorName
-        - operatorEmail
-        - storageCapacityGb
-        - bandwidthCapacityGb
 
     UpdateNodeBody:
       type: object
@@ -734,11 +1564,28 @@ components:
           type: number
         bandwidthCapacityGb:
           type: number
-        uptimePercent:
+
+    NodeCapacity:
+      type: object
+      properties:
+        nodeId:
+          type: integer
+        domain:
+          type: string
+        storageCapacityGb:
           type: number
+        storageUsedGb:
+          type: number
+        storageAvailableGb:
+          type: number
+        bandwidthCapacityGb:
+          type: number
+        siteCount:
+          type: integer
 
     Site:
       type: object
+      required: [id, name, domain, status, siteType, ownerName, ownerEmail, createdAt]
       properties:
         id:
           type: integer
@@ -754,6 +1601,9 @@ components:
         siteType:
           type: string
           enum: [static, dynamic, blog, portfolio, other]
+        visibility:
+          type: string
+          enum: [public, private, password]
         ownerName:
           type: string
         ownerEmail:
@@ -770,30 +1620,27 @@ components:
           type: number
         monthlyBandwidthGb:
           type: number
+        hitCount:
+          type: integer
         createdAt:
           type: string
         updatedAt:
           type: string
-      required:
-        - id
-        - name
-        - domain
-        - description
-        - status
-        - siteType
-        - ownerName
-        - ownerEmail
-        - ownerId
-        - primaryNodeId
-        - primaryNodeDomain
-        - replicaCount
-        - storageUsedMb
-        - monthlyBandwidthGb
-        - createdAt
-        - updatedAt
+
+    PaginatedSites:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Site"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
 
     CreateSiteBody:
       type: object
+      required: [name, domain, siteType, ownerName, ownerEmail]
       properties:
         name:
           type: string
@@ -810,12 +1657,6 @@ components:
           type: string
         primaryNodeId:
           type: integer
-      required:
-        - name
-        - domain
-        - siteType
-        - ownerName
-        - ownerEmail
 
     UpdateSiteBody:
       type: object
@@ -832,8 +1673,27 @@ components:
           enum: [static, dynamic, blog, portfolio, other]
         primaryNodeId:
           type: integer
-        replicaCount:
+
+    SiteFile:
+      type: object
+      required: [id, siteId, filePath, objectPath, contentType, sizeBytes, createdAt]
+      properties:
+        id:
           type: integer
+        siteId:
+          type: integer
+        deploymentId:
+          type: ["integer", "null"]
+        filePath:
+          type: string
+        objectPath:
+          type: string
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+        createdAt:
+          type: string
 
     SiteFileUploadUrlBody:
       type: object
@@ -841,7 +1701,6 @@ components:
       properties:
         filePath:
           type: string
-          description: Relative path within the site (e.g. index.html, css/style.css)
         contentType:
           type: string
         size:
@@ -871,27 +1730,6 @@ components:
         sizeBytes:
           type: integer
 
-    SiteFile:
-      type: object
-      required: [id, siteId, filePath, objectPath, contentType, sizeBytes, createdAt]
-      properties:
-        id:
-          type: integer
-        siteId:
-          type: integer
-        deploymentId:
-          type: ["integer", "null"]
-        filePath:
-          type: string
-        objectPath:
-          type: string
-        contentType:
-          type: string
-        sizeBytes:
-          type: integer
-        createdAt:
-          type: string
-
     SiteDeployment:
       type: object
       required: [id, siteId, version, status, fileCount, totalSizeMb, deployedAt]
@@ -913,10 +1751,462 @@ components:
           type: number
         deployedAt:
           type: string
+        createdAt:
+          type: string
+
+    DeployResult:
+      allOf:
+        - $ref: "#/components/schemas/SiteDeployment"
+        - type: object
+          properties:
+            replication:
+              type: object
+              properties:
+                peers:
+                  type: integer
+                synced:
+                  type: integer
+                results:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      node:
+                        type: string
+                      success:
+                        type: boolean
+                      error:
+                        type: ["string", "null"]
+
+    ApiToken:
+      type: object
+      required: [id, name, tokenPrefix, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        tokenPrefix:
+          type: string
+        lastUsedAt:
+          type: ["string", "null"]
+        expiresAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        revokedAt:
+          type: ["string", "null"]
+
+    CreatedToken:
+      allOf:
+        - $ref: "#/components/schemas/ApiToken"
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: "Plaintext token — shown once only. Store securely."
+
+    CreateTokenBody:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        expiresInDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+
+    SiteMember:
+      type: object
+      required: [id, siteId, userId, role, createdAt]
+      properties:
+        id:
+          type: integer
+        siteId:
+          type: integer
+        userId:
+          type: string
+        role:
+          type: string
+          enum: [owner, editor, viewer]
+        invitedByUserId:
+          type: ["string", "null"]
+        acceptedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        email:
+          type: ["string", "null"]
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+
+    AddMemberBody:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: string
+        role:
+          type: string
+          enum: [editor, viewer]
+          default: viewer
+
+    UpdateVisibilityBody:
+      type: object
+      required: [visibility]
+      properties:
+        visibility:
+          type: string
+          enum: [public, private, password]
+        password:
+          type: string
+          minLength: 6
+          description: Required when visibility is "password"
+
+    CustomDomain:
+      type: object
+      required: [id, siteId, domain, verificationToken, status, createdAt]
+      properties:
+        id:
+          type: integer
+        siteId:
+          type: integer
+        domain:
+          type: string
+        verificationToken:
+          type: string
+        status:
+          type: string
+          enum: [pending, verified, failed]
+        verifiedAt:
+          type: ["string", "null"]
+        lastCheckedAt:
+          type: ["string", "null"]
+        lastError:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    CustomDomainWithInstructions:
+      allOf:
+        - $ref: "#/components/schemas/CustomDomain"
+        - type: object
+          properties:
+            instructions:
+              type: object
+              properties:
+                txt:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    type:
+                      type: string
+                    value:
+                      type: string
+                cname:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    type:
+                      type: string
+                    value:
+                      type: string
+
+    SiteAnalyticsResponse:
+      type: object
+      properties:
+        period:
+          type: string
+        totals:
+          type: object
+          properties:
+            hits:
+              type: integer
+            bytesServed:
+              type: integer
+            uniqueIps:
+              type: integer
+        hourly:
+          type: array
+          items:
+            type: object
+        topReferrers:
+          type: array
+          items:
+            type: object
+            properties:
+              referrer:
+                type: string
+              count:
+                type: integer
+        topPaths:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              count:
+                type: integer
+
+    AdminAnalyticsResponse:
+      type: object
+      properties:
+        last24h:
+          type: object
+          properties:
+            hits:
+              type: integer
+            bytesServed:
+              type: integer
+        last7d:
+          type: object
+          properties:
+            hits:
+              type: integer
+            bytesServed:
+              type: integer
+        topSites:
+          type: array
+          items:
+            type: object
+
+    AdminOverview:
+      type: object
+      properties:
+        node:
+          $ref: "#/components/schemas/Node"
+        summary:
+          type: object
+        analytics24h:
+          type: object
+        recentEvents:
+          type: array
+          items:
+            type: object
+        systemInfo:
+          type: object
+
+    UpdateNodeSettingsBody:
+      type: object
+      properties:
+        name:
+          type: string
+        region:
+          type: string
+        operatorEmail:
+          type: string
+          format: email
+        maxStorageGb:
+          type: number
+        description:
+          type: string
+
+    PaginatedUsers:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    CapacitySummary:
+      type: object
+      properties:
+        totalNodes:
+          type: integer
+        totalStorageGb:
+          type: number
+        usedStorageGb:
+          type: number
+        totalBandwidthGb:
+          type: number
+
+    FederationMeta:
+      type: object
+      properties:
+        protocol:
+          type: string
+        name:
+          type: string
+        domain:
+          type: string
+        region:
+          type: string
+        publicKey:
+          type: ["string", "null"]
+        nodeCount:
+          type: integer
+        activeSites:
+          type: integer
+        joinedAt:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+
+    HandshakeResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        targetUrl:
+          type: string
+        discoveryData:
+          type: ["object", "null"]
+        pingResult:
+          type: ["object", "null"]
+        error:
+          type: ["string", "null"]
+
+    FederationPingBody:
+      type: object
+      required: [nodeDomain, challenge, signature]
+      properties:
+        nodeDomain:
+          type: string
+        challenge:
+          type: string
+        signature:
+          type: string
+        timestamp:
+          type: string
+
+    FederationSyncResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [synced, skipped, queued, failed]
+        siteDomain:
+          type: string
+        filesSync:
+          type: integer
+        failedFiles:
+          type: integer
+        originDomain:
+          type: string
+
+    FederationManifest:
+      type: object
+      properties:
+        site:
+          type: object
+        deployment:
+          $ref: "#/components/schemas/SiteDeployment"
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              filePath:
+                type: string
+              contentType:
+                type: string
+              sizeBytes:
+                type: integer
+              downloadUrl:
+                type: string
+        signature:
+          type: ["string", "null"]
+        servedBy:
+          type: string
+        expiresAt:
+          type: string
+
+    PaginatedEvents:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    GossipResponse:
+      type: object
+      properties:
+        domain:
+          type: string
+        peerCount:
+          type: integer
+        peers:
+          type: array
+          items:
+            type: object
+        servedAt:
+          type: string
+
+    GossipPushBody:
+      type: object
+      required: [fromDomain, peers, timestamp]
+      properties:
+        fromDomain:
+          type: string
+        peers:
+          type: array
+          items:
+            type: object
+            properties:
+              domain:
+                type: string
+              name:
+                type: string
+              publicKey:
+                type: string
+              region:
+                type: string
+        timestamp:
+          type: number
+
+    BootstrapResponse:
+      type: object
+      properties:
+        protocol:
+          type: string
+        description:
+          type: string
+        servedBy:
+          type: string
+        generatedAt:
+          type: string
+        nodeCount:
+          type: integer
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              domain:
+                type: string
+              name:
+                type: string
+              region:
+                type: string
+              publicKey:
+                type: ["string", "null"]
+              verifiedAt:
+                type: ["string", "null"]
+        docs:
+          type: string
 
     AuthUser:
       type: object
-      required: [id, email, firstName, lastName, profileImageUrl]
+      required: [id]
       properties:
         id:
           type: string
@@ -944,19 +2234,14 @@ components:
       properties:
         code:
           type: string
-          minLength: 1
         code_verifier:
           type: string
-          minLength: 1
         redirect_uri:
           type: string
-          minLength: 1
         state:
           type: string
-          minLength: 1
         nonce:
           type: string
-          minLength: 1
 
     ExchangeMobileAuthorizationCodeResponse:
       type: object
@@ -978,13 +2263,10 @@ components:
       properties:
         name:
           type: string
-          minLength: 1
         size:
           type: integer
-          minimum: 1
         contentType:
           type: string
-          minLength: 1
 
     RequestUploadUrlResponse:
       type: object
@@ -994,5 +2276,3 @@ components:
           type: string
         objectPath:
           type: string
-        metadata:
-          $ref: "#/components/schemas/RequestUploadUrlBody"
