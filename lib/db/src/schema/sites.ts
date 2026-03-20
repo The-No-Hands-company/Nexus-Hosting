@@ -25,7 +25,8 @@ export const sitesTable = pgTable("sites", {
   /** public | private | password */
   visibility: siteVisibilityEnum("visibility").notNull().default("public"),
   /** bcrypt hash — only set when visibility = 'password' */
-  passwordHash: text("password_hash"),
+  passwordHash:  text("password_hash"),
+  unlockMessage: text("unlock_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => [

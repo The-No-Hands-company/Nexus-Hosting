@@ -178,8 +178,18 @@ function DeploymentHistory({ siteId, deployments, onRollback, isRollingBack, rol
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 text-xs text-muted-foreground">
-                    <span>{d.fileCount} files · {d.totalSizeMb.toFixed(2)} MB</span>
-                    <span>{d.deployedBy?.startsWith("federation:") ? <span className="text-secondary">↙ replicated</span> : formatDistanceToNow(new Date(d.deployedAt),{addSuffix:true})}</span>
+                    <span>{d.fileCount} files · {d.totalSizeMb.toFixed(2)} MB{d.environment && d.environment !== "production" ? <span className="ml-1 text-amber-400">({d.environment})</span> : null}</span>
+                    <span className="flex items-center justify-between">
+                      <span>{d.deployedBy?.startsWith("federation:") ? <span className="text-secondary">↙ replicated</span> : formatDistanceToNow(new Date(d.deployedAt),{addSuffix:true})}</span>
+                      {d.version > 1 && (
+                        <a href={`${import.meta.env.BASE_URL?.replace(/\/$/,"")}/api/sites/${siteId}/deployments/${d.id}/diff`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-primary transition-colors"
+                          title="View diff vs previous version">
+                          diff
+                        </a>
+                      )}
+                    </span>
                   </div>
                 </div>
               );

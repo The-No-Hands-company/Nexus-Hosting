@@ -24,6 +24,7 @@ import twoFactorRouter from "./twoFactor";
 import transferRouter from "./transfer";
 import envVarsRouter from "./envVars";
 import gitWebhookRouter from "./gitWebhook";
+import deploymentDiffRouter from "./deploymentDiff";
 
 const router: IRouter = Router();
 
@@ -52,5 +53,6 @@ router.use(twoFactorRouter);
 router.use(transferRouter);
 router.use(envVarsRouter);
 router.use(gitWebhookRouter);
+router.use(deploymentDiffRouter);
 
 export default router;

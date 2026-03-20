@@ -72,7 +72,23 @@ export default function SiteDetail() {
           </div>
         </div>
         
-        <div className="flex gap-3 w-full lg:w-auto mt-4 lg:mt-0">
+        <div className="flex gap-3 w-full lg:w-auto mt-4 lg:mt-0 flex-wrap">
+          {/* Quick action links */}
+          <Link href={`/analytics/${site.id}`}>
+            <Button variant="outline" size="sm" className="border-white/10 text-muted-foreground hover:text-white gap-1.5">
+              <Activity className="w-3.5 h-3.5" />Analytics
+            </Button>
+          </Link>
+          <Link href={`/sites/${site.id}/forms`}>
+            <Button variant="outline" size="sm" className="border-white/10 text-muted-foreground hover:text-white gap-1.5">
+              <Copy className="w-3.5 h-3.5" />Forms
+            </Button>
+          </Link>
+          <Link href={`/sites/${site.id}/builds`}>
+            <Button variant="outline" size="sm" className="border-white/10 text-muted-foreground hover:text-white gap-1.5">
+              <Server className="w-3.5 h-3.5" />Builds
+            </Button>
+          </Link>
           <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" className="flex-1 lg:flex-none border-white/10 hover:bg-white/5">

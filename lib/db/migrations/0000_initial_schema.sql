@@ -468,3 +468,6 @@ CREATE TABLE IF NOT EXISTS "site_env_vars" (
   UNIQUE("site_id", "key")
 );
 CREATE INDEX IF NOT EXISTS "site_env_vars_site_idx" ON "site_env_vars"("site_id");
+
+-- ─── Per-site password gate customisation ────────────────────────────────────
+ALTER TABLE "sites" ADD COLUMN IF NOT EXISTS "unlock_message" TEXT;
