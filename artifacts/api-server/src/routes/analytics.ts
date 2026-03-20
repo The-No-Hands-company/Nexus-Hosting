@@ -1,18 +1,30 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, sitesTable, siteAnalyticsTable, analyticsBufferTable } from "@workspace/db";
+import { db, sitesTable, siteAnalyticsTable, analyticsBufferTable, siteMembersTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import { asyncHandler, AppError } from "../lib/errors";
+import { requireAdmin } from "../middleware/requireAdmin";
 
 const router: IRouter = Router();
 
 /** GET /api/sites/:id/analytics?period=24h|7d|30d */
 router.get("/sites/:id/analytics", asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
 
   const [site] = await db.select({ id: sitesTable.id, ownerId: sitesTable.ownerId })
     .from(sitesTable).where(eq(sitesTable.id, siteId));
   if (!site) throw AppError.notFound("Site not found");
+
+  // Allow site owner or team members — reject everyone else
+  if (site.ownerId !== req.user.id) {
+    const [membership] = await db
+      .select({ id: siteMembersTable.id })
+      .from(siteMembersTable)
+      .where(and(eq(siteMembersTable.siteId, siteId), eq(siteMembersTable.userId, req.user.id)));
+    if (!membership) throw AppError.forbidden("Only the site owner or members can view analytics");
+  }
 
   const period = (req.query.period as string) || "24h";
   const now = new Date();
@@ -65,7 +77,7 @@ router.get("/sites/:id/analytics", asyncHandler(async (req: Request, res: Respon
 }));
 
 /** GET /api/admin/analytics — network-wide aggregate */
-router.get("/admin/analytics", asyncHandler(async (req: Request, res: Response) => {
+router.get("/admin/analytics", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const now = new Date();

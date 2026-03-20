@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { loginCommand } from "./commands/login.js";
+import { logoutCommand } from "./commands/logout.js";
+import { whoamiCommand } from "./commands/whoami.js";
 import { deployCommand } from "./commands/deploy.js";
 import { sitesCommand } from "./commands/sites.js";
 import { tokensCommand } from "./commands/tokens.js";
@@ -16,8 +18,10 @@ program
   .description("FedHost CLI — deploy static sites to your Federated Hosting node")
   .version("0.1.0");
 
-program.addCommand(initCommand);      // first — most important for new users
+program.addCommand(initCommand);
 program.addCommand(loginCommand);
+program.addCommand(logoutCommand);
+program.addCommand(whoamiCommand);
 program.addCommand(statusCommand);
 program.addCommand(deployCommand);
 program.addCommand(sitesCommand);

@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, sitesTable, siteDeploymentsTable, siteFilesTable, nodesTable, federationEventsTable } from "@workspace/db";
-import { eq, and, isNull, count, sql } from "drizzle-orm";
+import { eq, and, isNull, count, desc, sql } from "drizzle-orm";
 import { storage, ObjectNotFoundError } from "../lib/storageProvider";
 import { signMessage } from "../lib/federation";
 import { asyncHandler, AppError } from "../lib/errors";
@@ -8,6 +8,7 @@ import { uploadLimiter } from "../middleware/rateLimiter";
 import { webhookDeploy, webhookDeployFailed } from "../lib/webhooks";
 import { invalidateSiteCache } from "../lib/domainCache";
 import { enqueueSyncRetry } from "../lib/syncRetryQueue";
+import { deploymentsTotal, storageOperationsTotal } from "../lib/metrics";
 import {
   GetSiteFileUploadUrlBody,
   RegisterSiteFileBody,
@@ -177,6 +178,8 @@ router.post("/sites/:id/deploy", asyncHandler(async (req: Request, res: Response
     "Site deployed",
   );
 
+  deploymentsTotal.inc({ status: "active" });
+
   // Fire deploy webhook (non-blocking)
   webhookDeploy({
     siteId,
@@ -249,16 +252,34 @@ router.post("/sites/:id/deploy", asyncHandler(async (req: Request, res: Response
 }));
 
 router.get("/sites/:id/deployments", asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
+
+  // Verify caller owns the site
+  const [site] = await db.select({ ownerId: sitesTable.ownerId }).from(sitesTable).where(eq(sitesTable.id, siteId));
+  if (!site) throw AppError.notFound("Site not found");
+  if (site.ownerId !== req.user.id) throw AppError.forbidden();
+
+  const limit  = Math.min(100, Math.max(1, parseInt((req.query.limit  as string) || "20", 10)));
+  const page   = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+  const offset = (page - 1) * limit;
+
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(siteDeploymentsTable)
+    .where(eq(siteDeploymentsTable.siteId, siteId));
 
   const deployments = await db
     .select()
     .from(siteDeploymentsTable)
     .where(eq(siteDeploymentsTable.siteId, siteId))
-    .orderBy(siteDeploymentsTable.createdAt);
+    .orderBy(desc(siteDeploymentsTable.createdAt))
+    .limit(limit)
+    .offset(offset);
 
-  res.json(deployments);
+  res.json({ data: deployments, meta: { total: Number(total), page, limit } });
 }));
 
 /**

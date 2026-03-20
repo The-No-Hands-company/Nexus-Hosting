@@ -8,6 +8,7 @@ import { startGossipPusher, stopGossipPusher } from "./routes/gossip";
 import { getRedisClient, closeRedis } from "./lib/redis";
 import { startSyncRetryQueue, stopSyncRetryQueue } from "./lib/syncRetryQueue";
 import { startAcmeRenewalScheduler, stopAcmeRenewalScheduler } from "./lib/acme";
+import { startOrphanCleanup, stopOrphanCleanup } from "./lib/orphanCleanup";
 import { db, sessionsTable } from "@workspace/db";
 import { lt } from "drizzle-orm";
 import { seedBundledSites } from "./lib/seedBundledSites";
@@ -65,6 +66,7 @@ function gracefulShutdown(server: http.Server, signal: string): void {
       stopGossipPusher();
       stopSyncRetryQueue();
       stopAcmeRenewalScheduler();
+      stopOrphanCleanup();
       await closeRedis();
       const { pool } = await import("@workspace/db");
       await pool.end();
@@ -100,6 +102,7 @@ ensureLocalNode()
     startGossipPusher();
     startSyncRetryQueue();
     startAcmeRenewalScheduler();
+    startOrphanCleanup();
 
     // Initialise Redis connection (optional — falls back to in-memory if not configured)
     const redis = getRedisClient();

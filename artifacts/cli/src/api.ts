@@ -45,13 +45,20 @@ export async function apiFetch<T = unknown>(
 
 export async function apiUpload(
   uploadUrl: string,
-  file: Buffer,
+  file: Buffer | import("fs").ReadStream,
   contentType: string,
+  size?: number,
 ): Promise<void> {
+  const headers: Record<string, string> = { "Content-Type": contentType };
+  if (size !== undefined) headers["Content-Length"] = String(size);
+
   const res = await fetch(uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": contentType },
+    headers,
+    // @ts-ignore — Node fetch accepts ReadStream as body
     body: file,
-  });
+    duplex: "half", // required for streaming request bodies in Node 18+
+  } as RequestInit & { duplex: string });
+
   if (!res.ok) throw new Error(`Upload failed: HTTP ${res.status}`);
 }

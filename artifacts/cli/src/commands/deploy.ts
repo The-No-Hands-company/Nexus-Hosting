@@ -3,6 +3,7 @@ import chalk from "chalk";
 import ora, { type Ora } from "ora";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { glob } from "glob";
 import mime from "mime-types";
 import { apiFetch, apiUpload } from "../api.js";
@@ -100,9 +101,20 @@ export const deployCommand = new Command("deploy")
     let failed = 0;
 
     async function uploadFile(f: { abs: string; rel: string }): Promise<void> {
-      const fileBuffer = fs.readFileSync(f.abs);
+      const stat = fs.statSync(f.abs);
+      const size = stat.size;
       const contentType = (mime.lookup(f.abs) || "application/octet-stream") as string;
-      const size = fileBuffer.length;
+
+      // Compute SHA-256 hash for server-side deduplication.
+      // We stream the file once for hashing, then again for upload —
+      // never loading the full file into memory.
+      const contentHash = await new Promise<string>((resolve, reject) => {
+        const hash = crypto.createHash("sha256");
+        fs.createReadStream(f.abs)
+          .on("data", (chunk) => hash.update(chunk))
+          .on("end",  () => resolve(hash.digest("hex")))
+          .on("error", reject);
+      });
 
       const { uploadUrl, objectPath } = await apiFetch<UploadUrlResponse>(
         `/sites/${siteId}/files/upload-url`,
@@ -112,11 +124,12 @@ export const deployCommand = new Command("deploy")
         },
       );
 
-      await apiUpload(uploadUrl, fileBuffer, contentType);
+      // Stream file directly to presigned URL — no in-memory buffer
+      await apiUpload(uploadUrl, fs.createReadStream(f.abs), contentType, size);
 
       await apiFetch(`/sites/${siteId}/files`, {
         method: "POST",
-        body: JSON.stringify({ filePath: f.rel, objectPath, contentType, sizeBytes: size }),
+        body: JSON.stringify({ filePath: f.rel, objectPath, contentType, sizeBytes: size, contentHash }),
       });
     }
 

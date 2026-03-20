@@ -8,6 +8,7 @@ import { federationLimiter, writeLimiter } from "../middleware/rateLimiter";
 import { parsePagination, buildPaginatedResponse } from "../lib/pagination";
 import logger from "../lib/logger";
 import { resolveConflict } from "../lib/conflictResolution";
+import { federationSyncsTotal, federationPeersTotal } from "../lib/metrics";
 
 const router: IRouter = Router();
 const PROTOCOL_VERSION = "fedhost/1.0";
