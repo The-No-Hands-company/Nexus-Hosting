@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Federated Hosting API
-  version: 0.7.0
+  version: 0.8.0
   description: |
     Production-grade federated static site hosting network.
     Every node exposes this API. Authentication uses session cookies (browser)
@@ -2276,3 +2276,99 @@ components:
           type: string
         objectPath:
           type: string
+
+  /domains/{id}/tls-status:
+    get:
+      summary: Get TLS certificate status for a custom domain
+      tags: [Domains]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: TLS status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domainId: {type: integer}
+                  domain: {type: string}
+                  domainVerified: {type: boolean}
+                  acmeEnabled: {type: boolean}
+                  certExists: {type: boolean}
+                  certExpiry: {type: string, nullable: true}
+                  daysUntilExpiry: {type: integer, nullable: true}
+                  isValid: {type: boolean}
+                  willAutoRenew: {type: boolean}
+
+  /domains/{id}/provision-tls:
+    post:
+      summary: Provision or renew a TLS certificate for a custom domain
+      tags: [Domains]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+        - {name: force, in: query, schema: {type: boolean}}
+      responses:
+        '200':
+          description: Provisioning started or status response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [provisioning, already_valid, manual_required]}
+                  domain: {type: string}
+                  message: {type: string}
+
+  /admin/audit-log:
+    get:
+      summary: Paginated admin action history
+      tags: [Admin]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: page,  in: query, schema: {type: integer, default: 1}}
+        - {name: limit, in: query, schema: {type: integer, default: 50, maximum: 100}}
+      responses:
+        '200':
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: integer}
+                        actor_id: {type: string}
+                        actor_email: {type: string, nullable: true}
+                        action: {type: string}
+                        target_type: {type: string, nullable: true}
+                        target_id: {type: string, nullable: true}
+                        metadata: {type: object, nullable: true}
+                        ip_address: {type: string, nullable: true}
+                        created_at: {type: string, format: date-time}
+                  meta:
+                    type: object
+                    properties:
+                      total: {type: integer}
+                      page: {type: integer}
+                      limit: {type: integer}
+
+  /metrics:
+    get:
+      summary: Prometheus metrics scrape endpoint
+      tags: [Monitoring]
+      security: [{bearerToken: []}]
+      responses:
+        '200':
+          description: Prometheus text format metrics
+          content:
+            text/plain:
+              schema: {type: string}
+        '401':
+          description: Unauthorized (METRICS_TOKEN mismatch)
