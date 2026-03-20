@@ -18,6 +18,10 @@ import webhooksRouter from "./webhooks";
 import tlsRouter from "./tls";
 import redirectsRouter from "./redirects";
 import invitationsRouter from "./invitations";
+import formsRouter from "./forms";
+import buildsRouter from "./builds";
+import twoFactorRouter from "./twoFactor";
+import transferRouter from "./transfer";
 
 const router: IRouter = Router();
 
@@ -40,5 +44,9 @@ router.use(webhooksRouter);
 router.use(tlsRouter);
 router.use(redirectsRouter);
 router.use(invitationsRouter);
+router.use(formsRouter);
+router.use(buildsRouter);
+router.use(twoFactorRouter);
+router.use(transferRouter);
 
 export default router;

@@ -235,7 +235,32 @@ export async function emailInvitation(opts: {
   return sendMail({ to: opts.to, subject, html, text });
 }
 
-export async function emailSiteDeleted(opts: {
+export async function emailFormSubmission(opts: {
+  to: string;
+  siteName: string;
+  domain: string;
+  formName: string;
+  data: Record<string, string>;
+}) {
+  const subject = `📬 New ${opts.formName} submission on ${opts.siteName}`;
+  const rows = Object.entries(opts.data)
+    .filter(([k]) => !k.startsWith("_"))
+    .map(([k, v]) => `<tr><td style="padding:6px 12px;color:#9ca3af;border-right:1px solid rgba(255,255,255,.06)">${k}</td><td style="padding:6px 12px;color:#e4e4f0">${v}</td></tr>`)
+    .join("");
+
+  const html = layout(`
+    <div class="card">
+      <h1>New form submission</h1>
+      <p>You received a new <strong style="color:#fff">${opts.formName}</strong> submission on <strong style="color:#fff">${opts.domain}</strong>.</p>
+      <table style="width:100%;border-collapse:collapse;border:1px solid rgba(255,255,255,.06);border-radius:8px;overflow:hidden;margin-top:16px">
+        ${rows}
+      </table>
+    </div>
+  `, subject);
+  const text = `New ${opts.formName} submission on ${opts.domain}:\n` +
+    Object.entries(opts.data).filter(([k]) => !k.startsWith("_")).map(([k,v]) => `${k}: ${v}`).join("\n");
+  return sendMail({ to: opts.to, subject, html, text });
+}
   to: string;
   siteName: string;
   domain: string;

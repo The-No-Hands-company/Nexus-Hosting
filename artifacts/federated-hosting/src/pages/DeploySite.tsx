@@ -205,6 +205,7 @@ export default function DeploySite() {
   const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
+  const [environment, setEnvironment] = useState<"production" | "staging">("production");
   const [rollingBackId, setRollingBackId] = useState<number|null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -350,6 +351,18 @@ export default function DeploySite() {
 
               {hasUndeployed&&uploadQueue.every(i=>i.status!=="pending")&&(
                 <motion.div initial={{opacity:0,y:4}} animate={{opacity:1,y:0}}>
+                  <div className="flex gap-2 mb-2">
+                    {(["production", "staging"] as const).map(env => (
+                      <button key={env} onClick={() => setEnvironment(env)}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold border transition-all ${
+                          environment === env
+                            ? env === "production" ? "bg-primary/15 border-primary/40 text-primary" : "bg-amber-400/15 border-amber-400/40 text-amber-400"
+                            : "border-white/5 text-muted-foreground hover:border-white/15"
+                        }`}>
+                        {env.charAt(0).toUpperCase() + env.slice(1)}
+                      </button>
+                    ))}
+                  </div>
                   <Button onClick={deploy} disabled={isDeploying} className="w-full bg-primary text-black hover:bg-primary/90 font-semibold shadow-lg shadow-primary/20 h-11">
                     {isDeploying?<><Loader2 className="w-4 h-4 mr-2 animate-spin"/>{t("deploy.deploying")}</>:<><Rocket className="w-4 h-4 mr-2"/>{t("deploy.deploySite")}</>}
                   </Button>

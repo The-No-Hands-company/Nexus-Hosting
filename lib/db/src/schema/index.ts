@@ -9,3 +9,6 @@ export * from "./domains";
 export * from "./audit";
 export * from "./redirects";
 export * from "./invitations";
+export * from "./forms";
+export * from "./builds";
+export * from "./totp";
