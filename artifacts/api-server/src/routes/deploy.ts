@@ -6,6 +6,7 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage"
 import { signMessage } from "../lib/federation";
 import { asyncHandler, AppError } from "../lib/errors";
 import { uploadLimiter } from "../middleware/rateLimiter";
+import { webhookDeploy, webhookDeployFailed } from "../lib/webhooks";
 import {
   GetSiteFileUploadUrlBody,
   RegisterSiteFileBody,
@@ -162,6 +163,15 @@ router.post("/sites/:id/deploy", asyncHandler(async (req: Request, res: Response
     { siteId, deploymentId: deployment.id, fileCount: pendingFiles.length, sizeMb: totalSizeMb },
     "Site deployed",
   );
+
+  // Fire deploy webhook (non-blocking)
+  webhookDeploy({
+    siteId,
+    siteDomain: site.domain,
+    deploymentId: deployment.id,
+    version: deployment.version,
+    fileCount: pendingFiles.length,
+  });
 
   // Replicate to federation peers (non-blocking — don't fail the deploy if peers are down)
   const [localNode] = await db.select().from(nodesTable).where(eq(nodesTable.isLocalNode, 1));

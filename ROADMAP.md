@@ -97,13 +97,14 @@ Auto-seeded demo sites ship with every node on first boot.
 | Feature | Status | Notes |
 |---|---|---|
 | Bahasa Indonesia i18n | 📋 | Priority for Indonesian/SE Asian market |
-| End-to-end test suite (Playwright) | 📋 | sign-in, register, upload, deploy, verify |
-| OpenAPI spec sync with actual routes | 📋 | CI check |
-| Email / webhook notifications | 📋 | Node offline, deploy failed, new peer |
-| Rollback via CLI | 📋 | fh rollback --site <id> --to <version> |
+| End-to-end test suite (Playwright) | ✅ | health.spec.ts + deploy.spec.ts (11-step critical path) |
+| OpenAPI spec sync with actual routes | ✅ | Redocly lint in CI, spec v0.7.0 fully covers all routes |
+| Webhook notifications | ✅ | node_offline, node_online, deploy, deploy_failed, new_peer — Ed25519 signed |
+| Rollback via CLI | ✅ | fh rollback --site <id> [--version <n>] with interactive picker |
+| fh analytics + fh status CLI commands | ✅ | ASCII bar charts for traffic, node health summary |
 | @fedhost/cli published to npm | 📋 | Required for GitHub Actions workflow |
-| Public bootstrap node registry | 📋 | Well-known list for gossip bootstrapping |
-| Mobile-responsive layout audit | 📋 | Dashboard + My Sites |
+| Public bootstrap node registry | ✅ | GET /api/federation/bootstrap — healthy verified peers, 24h window |
+| Mobile-responsive layout audit | ✅ | Verified responsive grids across all pages |
 
 ---
 

@@ -18,6 +18,7 @@ import { asyncHandler, AppError } from "../lib/errors";
 import { signMessage, verifyMessage, generateKeyPair } from "../lib/federation";
 import logger from "../lib/logger";
 import { z } from "zod/v4";
+import { webhookNewPeer } from "../lib/webhooks";
 
 const router: IRouter = Router();
 
@@ -101,6 +102,7 @@ router.post("/federation/gossip/push", asyncHandler(async (req: Request, res: Re
 
       newPeers++;
       registered.push(peer.domain);
+      webhookNewPeer(peer.domain);
     } catch (err) {
       logger.warn({ domain: peer.domain, err }, "Gossip: failed to register peer");
     }

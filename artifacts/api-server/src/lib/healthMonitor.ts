@@ -1,6 +1,7 @@
 import { db, nodesTable, federationEventsTable } from "@workspace/db";
 import { eq, ne } from "drizzle-orm";
 import logger from "./logger";
+import { webhookNodeOffline, webhookNodeOnline } from "./webhooks";
 
 const HEALTH_CHECK_INTERVAL_MS = 2 * 60 * 1000; // every 2 minutes
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -28,6 +29,7 @@ async function checkNode(
 
     if (currentStatus !== "active") {
       logger.info({ nodeId, domain }, "[health] Node back online");
+      webhookNodeOnline(domain);
     }
   } catch (err: any) {
     const isNewlyOffline = currentStatus === "active";
@@ -47,6 +49,7 @@ async function checkNode(
       });
 
       logger.info({ nodeId, domain, error: err.message }, "[health] Node went offline");
+      webhookNodeOffline(domain);
     } else {
       logger.debug({ nodeId, domain }, "[health] Node still unreachable");
     }

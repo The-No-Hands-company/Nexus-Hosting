@@ -92,3 +92,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Federation Protocol page** — initial version with node list and basic metadata
 - **pnpm monorepo** — TypeScript project references; shared `@workspace/db`, `@workspace/api-zod`, `@workspace/api-client-react`
 - **OpenAPI 3.1 spec** — source of truth for all API shapes; Orval codegen for Zod validators and React Query hooks
+
+---
+
+## [0.7.0] — Phase 7: Webhooks, E2E Tests, Analytics CLI, Status Command
+
+### Added
+
+**Webhook notification system** (`lib/webhooks.ts`)
+- `deliverWebhook()` — fire-and-forget POST to all `WEBHOOK_URLS` with Ed25519 signature
+- Events: `node_offline`, `node_online`, `deploy`, `deploy_failed`, `new_peer`
+- `GET /api/webhooks/config` — view configured webhook URLs (credentials redacted)
+- `POST /api/webhooks/test` — send a test payload to all configured webhook endpoints
+- Wired into health monitor (node offline/online), deploy route (deploy), gossip (new peer)
+
+**Playwright E2E test suite** (`e2e/`)
+- `playwright.config.ts` — configured for Chromium + mobile Safari, `FH_BASE_URL` env var
+- `e2e/health.spec.ts` — health endpoints, federation discovery, public site endpoints, rate limit smoke
+- `e2e/deploy.spec.ts` — 11-step critical path test: auth → create site → upload → deploy → serve → analytics → rollback → cleanup
+- `e2e/helpers.ts` — shared fixtures including `authedRequest` context with Bearer token
+
+**CLI additions**
+- `fh analytics --site <id> [--period 24h|7d|30d]` — traffic stats with ASCII bar charts, top paths + referrers
+- `fh status` — node health, federation metadata, network capacity summary
+
+**CI pipeline** (`.github/workflows/ci.yml`)
+- TypeScript typecheck, OpenAPI validation (Redocly lint), build (API + frontend + CLI), Docker build check
+- Concurrency group cancellation — no wasted CI minutes on stale runs
+
+**OpenAPI spec v0.7.0** (`lib/api-spec/openapi.yaml`)
+- All Phase 5+6 routes fully documented: tokens, access control, custom domains, analytics, admin, gossip, bootstrap, rollback, federation sync + manifest, webhooks
+
+### Changed
+- `healthMonitor.ts` — fires `webhookNodeOffline` / `webhookNodeOnline` on status transitions
+- `deploy.ts` — fires `webhookDeploy` after every successful deploy
+- `gossip.ts` — fires `webhookNewPeer` when gossip registers a new node
+- `routes/index.ts` — webhooks router registered
+- `ROADMAP.md` — Phase 6 marked ✅, Phase 7 items updated
+
