@@ -17,6 +17,7 @@ import gossipRouter from "./gossip";
 import webhooksRouter from "./webhooks";
 import tlsRouter from "./tls";
 import redirectsRouter from "./redirects";
+import invitationsRouter from "./invitations";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(adminRouter);
 router.use(webhooksRouter);
 router.use(tlsRouter);
 router.use(redirectsRouter);
+router.use(invitationsRouter);
 
 export default router;

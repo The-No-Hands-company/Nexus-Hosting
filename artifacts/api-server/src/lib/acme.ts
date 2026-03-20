@@ -33,8 +33,9 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import logger from "./logger";
-import { db, customDomainsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, customDomainsTable, sitesTable, usersTable } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
+import { emailCertExpiring, emailCertRenewed } from "./email";
 
 // Shared challenge token store — read by GET /.well-known/acme-challenge/:token
 export const acmeChallenges = new Map<string, string>();
@@ -222,16 +223,52 @@ async function checkRenewals(): Promise<void> {
   if (!process.env.ACME_ENABLED) return;
 
   const verifiedDomains = await db
-    .select({ domain: customDomainsTable.domain })
+    .select({
+      domain: customDomainsTable.domain,
+      siteId: customDomainsTable.siteId,
+    })
     .from(customDomainsTable)
     .where(eq(customDomainsTable.status, "verified"));
 
-  for (const { domain } of verifiedDomains) {
+  for (const { domain, siteId } of verifiedDomains) {
+    const expiry = getCertExpiry(domain);
+    const daysLeft = expiry ? Math.floor((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+
     if (!certIsValid(domain)) {
       logger.info({ domain }, "[acme] Certificate missing or expiring — renewing");
       const result = await provisionCertificate(domain);
-      if (!result.success) {
-        logger.error({ domain, error: result.error }, "[acme] Renewal failed");
+
+      // Notify site owner on result
+      const [ownerEmail] = await db
+        .select({ email: usersTable.email })
+        .from(sitesTable)
+        .innerJoin(usersTable, eq(usersTable.id, sitesTable.ownerId))
+        .where(eq(sitesTable.id, siteId));
+
+      if (ownerEmail?.email) {
+        if (result.success && result.expiresAt) {
+          emailCertRenewed({ to: ownerEmail.email, domain, expiresAt: result.expiresAt }).catch(() => {});
+        } else if (!result.success) {
+          logger.error({ domain, error: result.error }, "[acme] Renewal failed");
+        }
+      }
+    } else if (daysLeft !== null && daysLeft <= 30 && daysLeft > 0) {
+      // Cert valid but expiring soon — send a warning (at 30, 14, 7, 3, 1 days)
+      if ([30, 14, 7, 3, 1].includes(daysLeft)) {
+        const [ownerEmail] = await db
+          .select({ email: usersTable.email })
+          .from(sitesTable)
+          .innerJoin(usersTable, eq(usersTable.id, sitesTable.ownerId))
+          .where(eq(sitesTable.id, siteId));
+
+        if (ownerEmail?.email && expiry) {
+          emailCertExpiring({
+            to: ownerEmail.email,
+            domain,
+            daysLeft,
+            expiresAt: expiry.toUTCString(),
+          }).catch(() => {});
+        }
       }
     }
   }

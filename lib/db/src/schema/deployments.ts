@@ -23,7 +23,9 @@ export const siteDeploymentsTable = pgTable("site_deployments", {
     .notNull()
     .references(() => sitesTable.id, { onDelete: "cascade" }),
   version: integer("version").notNull().default(1),
-  deployedBy: text("deployed_by"),
+  deployedBy:  text("deployed_by"),
+  environment: text("environment").notNull().default("production"),
+  previewUrl:  text("preview_url"),
   status: deploymentStatusEnum("status").notNull().default("pending"),
   fileCount: integer("file_count").notNull().default(0),
   totalSizeMb: real("total_size_mb").notNull().default(0),
@@ -32,6 +34,7 @@ export const siteDeploymentsTable = pgTable("site_deployments", {
 }, (t) => [
   index("site_deployments_site_idx").on(t.siteId),
   index("site_deployments_status_idx").on(t.status),
+  index("site_deployments_env_idx").on(t.siteId, t.environment),
 ]);
 
 export const siteFilesTable = pgTable("site_files", {

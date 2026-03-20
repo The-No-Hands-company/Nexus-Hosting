@@ -8,6 +8,7 @@ import { uploadLimiter, writeLimiter, deployLimiter } from "../middleware/rateLi
 import { webhookDeploy, webhookDeployFailed } from "../lib/webhooks";
 import { invalidateSiteCache } from "../lib/domainCache";
 import { enqueueSyncRetry } from "../lib/syncRetryQueue";
+import { emailDeploySuccess, emailDeployFailed } from "../lib/email";
 import { deploymentsTotal, storageOperationsTotal } from "../lib/metrics";
 import {
   GetSiteFileUploadUrlBody,
@@ -274,6 +275,18 @@ router.post("/sites/:id/deploy", deployLimiter, asyncHandler(async (req: Request
       results: replicationResults,
     },
   });
+
+  // Fire-and-forget email notification — never block the response
+  if (req.user?.email) {
+    emailDeploySuccess({
+      to: req.user.email,
+      siteName: site.name,
+      domain: site.domain,
+      version: deployment.version,
+      fileCount: deployment.fileCount,
+      deployedAt: new Date().toUTCString(),
+    }).catch(() => {});
+  }
 }));
 
 router.get("/sites/:id/deployments", asyncHandler(async (req: Request, res: Response) => {

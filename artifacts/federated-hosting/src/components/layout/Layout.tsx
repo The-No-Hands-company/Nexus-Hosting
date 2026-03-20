@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio, BookMarked, Key, Shield, Wifi, FileCode } from "lucide-react";
+import { Activity, LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio, BookMarked, Key, Shield, Wifi, FileCode, BarChart2 } from "lucide-react";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -28,6 +28,7 @@ const NAV_ITEMS = [
 
 const AUTH_NAV_ITEMS = [
   { href: "/my-sites", label: "My Sites", icon: Upload },
+  { href: "/usage",    label: "Usage",     icon: BarChart2 },
   { href: "/tokens",   label: "API Tokens", icon: Key },
   { href: "/admin",    label: "Node Admin", icon: Shield },
 ];
