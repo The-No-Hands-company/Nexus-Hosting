@@ -1,12 +1,24 @@
 import { type Request, type Response, type NextFunction } from "express";
-import { db, sitesTable, siteFilesTable, analyticsBufferTable, customDomainsTable } from "@workspace/db";
+import { db, sitesTable, siteFilesTable, analyticsBufferTable, customDomainsTable, siteRedirectRulesTable, siteCustomHeadersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { storage, ObjectNotFoundError } from "../lib/storageProvider";
 import { hashIp } from "../lib/analyticsFlush";
 import crypto from "crypto";
 import { getCachedSite, setCachedSite, getCachedFile, setCachedFile } from "../lib/domainCache";
+import fs from "fs";
+import path from "path";
 
 const PUBLIC_DOMAIN = process.env.PUBLIC_DOMAIN ?? "";
+
+// Load password gate HTML at startup — avoids fs.readFileSync on every request
+let _passwordGateHtml: string | null = null;
+function getPasswordGateHtml(): string {
+  if (!_passwordGateHtml) {
+    const p = path.join(process.cwd(), "public", "password-gate.html");
+    _passwordGateHtml = fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "<h1>Password Required</h1>";
+  }
+  return _passwordGateHtml;
+}
 
 function isKnownInfraHost(host: string): boolean {
   if (!host) return true;
@@ -33,12 +45,9 @@ function verifyUnlockCookie(cookieValue: string | undefined, siteId: number): bo
     if (!encodedPayload || !hmac) return false;
     const payload = Buffer.from(encodedPayload, "base64url").toString();
     const [cookieSiteId, issuedAt] = payload.split(":");
-    // Verify siteId matches
     if (parseInt(cookieSiteId, 10) !== siteId) return false;
-    // Verify not expired (24 hours)
     const age = Math.floor(Date.now() / 1000) - parseInt(issuedAt, 10);
     if (age > 86400) return false;
-    // Verify HMAC
     const expectedHmac = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
     return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expectedHmac));
   } catch {
@@ -47,7 +56,72 @@ function verifyUnlockCookie(cookieValue: string | undefined, siteId: number): bo
 }
 
 function renderPasswordGate(siteId: number, domain: string): string {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Password Required</title><style>*{box-sizing:border-box;margin:0;padding:0}body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0f;color:#e4e4f0;font-family:system-ui,sans-serif}.card{background:#12121a;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:40px 36px;width:100%;max-width:380px}.lock{font-size:36px;text-align:center;margin-bottom:20px}h1{font-size:1.2rem;text-align:center;margin-bottom:6px}p{color:#888;font-size:.85rem;text-align:center;margin-bottom:28px}input{width:100%;padding:12px 16px;background:#1a1a26;border:1px solid rgba(255,255,255,.1);border-radius:10px;color:#e4e4f0;font-size:1rem;outline:none;margin-bottom:14px}input:focus{border-color:#00e5ff;box-shadow:0 0 0 3px rgba(0,229,255,.15)}button{width:100%;padding:12px;background:#00e5ff;color:#000;border:none;border-radius:10px;font-weight:700;font-size:.95rem;cursor:pointer}.error{color:#ff6b6b;font-size:.82rem;text-align:center;margin-top:10px;display:none}</style></head><body><div class="card"><div class="lock">🔒</div><h1>Password Required</h1><p>${domain} is protected.</p><form id="f"><input type="password" id="pw" placeholder="Enter password" autofocus required/><button type="submit">Unlock</button><p class="error" id="err">Incorrect password.</p></form></div><script>document.getElementById('f').addEventListener('submit',async e=>{e.preventDefault();const r=await fetch('/api/sites/${siteId}/unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('pw').value}),credentials:'include'});if(r.ok)location.reload();else{document.getElementById('err').style.display='block';document.getElementById('pw').value=''}});</script></body></html>`;
+  return getPasswordGateHtml().replace(
+    "<body>",
+    `<body data-site-id="${siteId}" data-domain="${domain.replace(/"/g, "&quot;")}">`
+  );
+}
+
+/**
+ * Match a request path against a redirect source pattern.
+ * Supports: /exact, /blog/:slug, /old/* (splat)
+ * Returns a match object with named params and splat, or null if no match.
+ */
+function matchRedirectPattern(reqPath: string, pattern: string): Record<string, string> | null {
+  // Normalise
+  const req = reqPath.endsWith("/") && reqPath !== "/" ? reqPath.slice(0, -1) : reqPath;
+  const pat = pattern.endsWith("/") && pattern !== "/" ? pattern.slice(0, -1) : pattern;
+
+  const params: Record<string, string> = {};
+
+  // Splat pattern: /prefix/*
+  if (pat.endsWith("/*")) {
+    const prefix = pat.slice(0, -2);
+    if (req === prefix || req.startsWith(prefix + "/")) {
+      params["*"] = req.slice(prefix.length + 1);
+      return params;
+    }
+    return null;
+  }
+
+  // Exact match with optional :param segments
+  const patParts = pat.split("/");
+  const reqParts = req.split("/");
+  if (patParts.length !== reqParts.length) return null;
+
+  for (let i = 0; i < patParts.length; i++) {
+    if (patParts[i]!.startsWith(":")) {
+      params[patParts[i]!.slice(1)] = decodeURIComponent(reqParts[i]!);
+    } else if (patParts[i] !== reqParts[i]) {
+      return null;
+    }
+  }
+  return params;
+}
+
+/** Interpolate :param and * placeholders in redirect destination */
+function interpolateDest(dest: string, params: Record<string, string>): string {
+  let result = dest;
+  for (const [k, v] of Object.entries(params)) {
+    result = result.replace(`:${k}`, v).replace("*", v);
+  }
+  return result;
+}
+
+/** Apply matching custom response headers to the response */
+function applyCustomHeaders(
+  res: import("express").Response,
+  reqPath: string,
+  rules: Array<{ path: string; name: string; value: string }>,
+): void {
+  for (const rule of rules) {
+    if (matchRedirectPattern(reqPath, rule.path) !== null) {
+      // Only set safe headers — block headers that could break the response
+      const lower = rule.name.toLowerCase();
+      if (lower === "content-length" || lower === "transfer-encoding" || lower === "connection") continue;
+      res.setHeader(rule.name, rule.value);
+    }
+  }
 }
 
 export async function hostRouter(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -102,6 +176,50 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
 
   const requestedPath = req.path === "/" ? "index.html" : req.path.replace(/^\//, "");
 
+  // ── Redirect rules ────────────────────────────────────────────────────────
+  // Evaluate in position order. First match wins.
+  // Status 200 = rewrite (serve dest transparently), all others = redirect.
+  const redirectRules = await db
+    .select()
+    .from(siteRedirectRulesTable)
+    .where(eq(siteRedirectRulesTable.siteId, site.id))
+    .orderBy(siteRedirectRulesTable.position);
+
+  for (const rule of redirectRules) {
+    const match = matchRedirectPattern(req.path, rule.src);
+    if (match) {
+      const dest = interpolateDest(rule.dest, match);
+      if (rule.status === 200) {
+        // Rewrite: serve dest path transparently
+        const rewritePath = dest.replace(/^\//, "");
+        const [fileRecord] = await db.select().from(siteFilesTable)
+          .where(and(eq(siteFilesTable.siteId, site.id), eq(siteFilesTable.filePath, rewritePath)));
+        if (fileRecord) {
+          applyCustomHeaders(res, req.path, await db.select().from(siteCustomHeadersTable).where(eq(siteCustomHeadersTable.siteId, site.id)));
+          res.setHeader("Content-Type", fileRecord.contentType);
+          res.setHeader("X-Served-By", "federated-hosting");
+          res.setHeader("Cache-Control", "public, max-age=3600");
+          await storage.streamToResponse(fileRecord.objectPath, res);
+          recordHit(site.id, rewritePath, req, fileRecord.sizeBytes ?? 0);
+          return;
+        }
+      } else if (rule.status === 404) {
+        res.status(404).send("<!DOCTYPE html><html><head><title>404</title></head><body style=\"font-family:system-ui;background:#0a0a0f;color:#e4e4f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0\"><div style=\"text-align:center\"><h1 style=\"font-size:4rem;font-weight:900;color:#00e5ff\">404</h1><p>Not found</p></div></body></html>");
+        return;
+      } else if (rule.status === 410) {
+        res.status(410).send("<!DOCTYPE html><html><head><title>410 Gone</title></head><body style=\"font-family:system-ui;background:#0a0a0f;color:#e4e4f0;display:flex;align-items:center;justify-content:center;min-height:100vh\"><div style=\"text-align:center\"><h1 style=\"font-size:4rem;font-weight:900;color:#f87171\">410</h1><p>Gone</p></div></body></html>");
+        return;
+      } else {
+        res.redirect(rule.status, dest);
+        return;
+      }
+    }
+  }
+
+  // ── Custom response headers ───────────────────────────────────────────────
+  const customHeaders = await db.select().from(siteCustomHeadersTable)
+    .where(eq(siteCustomHeadersTable.siteId, site.id));
+
   const serveFile = async (filePath: string): Promise<boolean> => {
     const [fileRecord] = await db
       .select()
@@ -109,6 +227,7 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
       .where(and(eq(siteFilesTable.siteId, site!.id), eq(siteFilesTable.filePath, filePath)));
     if (!fileRecord) return false;
     try {
+      applyCustomHeaders(res, req.path, customHeaders);
       res.setHeader("Content-Type", fileRecord.contentType);
       res.setHeader("X-Served-By", "federated-hosting");
       res.setHeader("X-Site-Domain", site!.domain);
@@ -125,12 +244,20 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
   try {
     const found = await serveFile(requestedPath);
     if (!found && requestedPath !== "index.html") {
-      const indexFound = await serveFile("index.html");
-      if (!indexFound) res.status(404).send("<h1>404 — Page not found</h1>");
+      // Try custom 404.html first, then SPA fallback (index.html), then generic
+      const custom404 = await serveFile("404.html");
+      if (!custom404) {
+        const spaFallback = await serveFile("index.html");
+        if (!spaFallback) {
+          res.status(404).send("<!DOCTYPE html><html><head><title>404</title></head><body style=\"font-family:system-ui;background:#0a0a0f;color:#e4e4f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0\"><div style=\"text-align:center\"><h1 style=\"font-size:4rem;font-weight:900;color:#00e5ff\">404</h1><p>Page not found</p></div></body></html>");
+        }
+      }
       return;
     }
-    if (!found) res.status(404).send("<h1>404 — Page not found</h1><p>No index.html yet.</p>");
+    if (!found) {
+      res.status(404).send("<!DOCTYPE html><html><head><title>404</title></head><body style=\"font-family:system-ui;background:#0a0a0f;color:#e4e4f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0\"><div style=\"text-align:center\"><h1 style=\"font-size:4rem;font-weight:900;color:#00e5ff\">404</h1><p>No index.html found</p></div></body></html>");
+    }
   } catch {
-    res.status(500).send("<h1>Server error</h1>");
+    res.status(500).send("<!DOCTYPE html><html><body><h1>Server Error</h1></body></html>");
   }
 }

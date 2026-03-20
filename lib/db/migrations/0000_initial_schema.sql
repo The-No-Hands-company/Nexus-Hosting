@@ -281,3 +281,34 @@ CREATE INDEX IF NOT EXISTS "audit_log_time_idx"   ON "admin_audit_log"("created_
 
 ALTER TABLE "site_files" ADD COLUMN IF NOT EXISTS "content_hash" TEXT;
 CREATE INDEX IF NOT EXISTS "site_files_hash_idx" ON "site_files"("content_hash") WHERE "content_hash" IS NOT NULL;
+
+-- ─── Site redirect rules ──────────────────────────────────────────────────────
+-- Per-site HTTP redirect/rewrite rules (equivalent to _redirects in Netlify).
+-- Processed in order. First matching rule wins.
+
+CREATE TABLE IF NOT EXISTS "site_redirect_rules" (
+  "id"          SERIAL PRIMARY KEY,
+  "site_id"     INTEGER NOT NULL REFERENCES "sites"("id") ON DELETE CASCADE,
+  "src"         TEXT    NOT NULL,   -- source path pattern (supports :param and * globs)
+  "dest"        TEXT    NOT NULL,   -- destination URL or path
+  "status"      INTEGER NOT NULL DEFAULT 301,  -- 301, 302, 200 (rewrite), 404, 410
+  "force"       INTEGER NOT NULL DEFAULT 0,    -- 1 = redirect even if src file exists
+  "position"    INTEGER NOT NULL DEFAULT 0,    -- lower = higher priority
+  "created_at"  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS "redirect_rules_site_idx" ON "site_redirect_rules"("site_id", "position");
+
+-- ─── Site custom headers ──────────────────────────────────────────────────────
+-- Per-site custom response headers (equivalent to _headers in Netlify).
+
+CREATE TABLE IF NOT EXISTS "site_custom_headers" (
+  "id"          SERIAL PRIMARY KEY,
+  "site_id"     INTEGER NOT NULL REFERENCES "sites"("id") ON DELETE CASCADE,
+  "path"        TEXT    NOT NULL DEFAULT "/*",  -- path pattern to match
+  "name"        TEXT    NOT NULL,               -- header name
+  "value"       TEXT    NOT NULL,               -- header value
+  "created_at"  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS "custom_headers_site_idx" ON "site_custom_headers"("site_id");

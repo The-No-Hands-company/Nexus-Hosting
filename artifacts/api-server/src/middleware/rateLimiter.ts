@@ -108,8 +108,38 @@ export const webhookLimiter = rateLimit({
   handler: makeHandler("Webhook test limit reached.", "WEBHOOK_RATE_LIMITED"),
 });
 
-// Slow down on repeated requests before hard-limiting
-export const speedLimiter = slowDown({
+// Per-user write limiter — keyed by user ID, not IP.
+// Prevents a single authenticated user from hammering write endpoints
+// even through rotating IPs or shared NAT.
+// Applied ON TOP of the per-IP writeLimiter — both must pass.
+export const userWriteLimiter = rateLimit({
+  windowMs: 60_000,
+  max: isProd ? 120 : 10_000,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store,
+  keyGenerator: (req) => {
+    // Use authenticated user ID if available, fall back to IP
+    const user = (req as any).user as { id?: string } | undefined;
+    return user?.id ?? req.ip ?? "anonymous";
+  },
+  handler: makeHandler("Too many requests from this account. Please slow down.", "USER_RATE_LIMITED"),
+  skip: (req) => !(req as any).user, // skip if not authenticated (IP limiter handles it)
+});
+
+// Per-user deploy limiter — max 20 deploys/hour per account
+export const deployLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  max: isProd ? 20 : 1_000,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  store,
+  keyGenerator: (req) => {
+    const user = (req as any).user as { id?: string } | undefined;
+    return `deploy:${user?.id ?? req.ip}`;
+  },
+  handler: makeHandler("Deploy limit reached (20 per hour). Please wait before deploying again.", "DEPLOY_RATE_LIMITED"),
+});
   windowMs: 60_000,
   delayAfter: isProd ? 100 : 5_000,
   delayMs: (used, req) => {

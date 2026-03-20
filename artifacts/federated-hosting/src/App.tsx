@@ -24,6 +24,7 @@ const TokensPage     = lazy(() => import("@/pages/Tokens"));
 const AdminPage      = lazy(() => import("@/pages/Admin"));
 const Marketplace    = lazy(() => import("@/pages/Marketplace"));
 const ApiDocs        = lazy(() => import("@/pages/ApiDocs"));
+const SiteSettings   = lazy(() => import("@/pages/SiteSettings"));
 
 function onQueryError(error: unknown) {
   const err = error as { status?: number; message?: string };
@@ -72,6 +73,7 @@ function Router() {
             <Route path="/admin" component={AdminPage} />
             <Route path="/network" component={Marketplace} />
             <Route path="/api-docs" component={ApiDocs} />
+            <Route path="/sites/:id/settings" component={SiteSettings} />
             <Route component={NotFound} />
           </Switch>
         </Suspense>

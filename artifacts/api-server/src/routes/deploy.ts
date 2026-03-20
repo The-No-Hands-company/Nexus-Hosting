@@ -4,7 +4,7 @@ import { eq, and, isNull, count, desc, sql } from "drizzle-orm";
 import { storage, ObjectNotFoundError } from "../lib/storageProvider";
 import { signMessage } from "../lib/federation";
 import { asyncHandler, AppError } from "../lib/errors";
-import { uploadLimiter } from "../middleware/rateLimiter";
+import { uploadLimiter, writeLimiter, deployLimiter } from "../middleware/rateLimiter";
 import { webhookDeploy, webhookDeployFailed } from "../lib/webhooks";
 import { invalidateSiteCache } from "../lib/domainCache";
 import { enqueueSyncRetry } from "../lib/syncRetryQueue";
@@ -114,7 +114,7 @@ router.get("/sites/:id/files", asyncHandler(async (req: Request, res: Response) 
   res.json(files);
 }));
 
-router.post("/sites/:id/deploy", asyncHandler(async (req: Request, res: Response) => {
+router.post("/sites/:id/deploy", deployLimiter, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const siteId = parseInt(req.params.id as string, 10);
@@ -139,6 +139,31 @@ router.post("/sites/:id/deploy", asyncHandler(async (req: Request, res: Response
       `Deployment too large (${totalSizeMb.toFixed(1)}MB). Maximum is ${MAX_TOTAL_DEPLOY_SIZE_MB}MB`,
       "DEPLOYMENT_TOO_LARGE",
     );
+  }
+
+  // ── Node storage quota enforcement ───────────────────────────────────────
+  // Check that this node has enough capacity for this deployment.
+  // We sum all site storage on this node and compare against the node's declared capacity.
+  const [quotaCheck] = await db
+    .select({
+      totalUsedMb: sql<number>`COALESCE(SUM(${sitesTable.storageUsedMb}), 0)`,
+      capacityGb: nodesTable.storageCapacityGb,
+    })
+    .from(nodesTable)
+    .leftJoin(sitesTable, eq(sitesTable.primaryNodeId, nodesTable.id))
+    .where(eq(nodesTable.isLocalNode, 1))
+    .groupBy(nodesTable.id);
+
+  if (quotaCheck) {
+    const totalUsedMbAfter = Number(quotaCheck.totalUsedMb) + totalSizeMb;
+    const capacityMb = quotaCheck.capacityGb * 1024;
+    if (totalUsedMbAfter > capacityMb) {
+      const availableMb = Math.max(0, capacityMb - Number(quotaCheck.totalUsedMb));
+      throw AppError.badRequest(
+        `Node storage quota exceeded. Available: ${availableMb.toFixed(0)}MB, Deployment requires: ${totalSizeMb.toFixed(0)}MB`,
+        "NODE_QUOTA_EXCEEDED",
+      );
+    }
   }
 
   // Wrap entire deployment in a transaction for atomicity

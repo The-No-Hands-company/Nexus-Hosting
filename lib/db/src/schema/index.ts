@@ -7,3 +7,4 @@ export * from "./analytics";
 export * from "./access";
 export * from "./domains";
 export * from "./audit";
+export * from "./redirects";

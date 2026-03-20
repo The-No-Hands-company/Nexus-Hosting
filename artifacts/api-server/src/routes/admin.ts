@@ -7,6 +7,7 @@ import { eq, count, sql, desc, gte, and } from "drizzle-orm";
 import { asyncHandler, AppError } from "../lib/errors";
 import { writeLimiter } from "../middleware/rateLimiter";
 import { requireAdmin } from "../middleware/requireAdmin";
+import { getSiteHealthSummary } from "../lib/siteHealthMonitor";
 import { auditLog } from "../lib/auditLog";
 import { z } from "zod/v4";
 import os from "os";
@@ -211,6 +212,12 @@ router.get("/admin/audit-log", requireAdmin, asyncHandler(async (req: Request, r
   `);
 
   res.json({ data: entries.rows, meta: { total: Number(total ?? 0), page, limit } });
+}));
+
+/** GET /api/admin/site-health — health status of all monitored public sites */
+router.get("/admin/site-health", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+  res.json(getSiteHealthSummary());
 }));
 
 export default router;
