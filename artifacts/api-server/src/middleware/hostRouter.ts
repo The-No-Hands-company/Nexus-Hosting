@@ -236,12 +236,27 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
   await new Promise<void>((resolve) => getServeLimiter(host)(req, res, () => resolve()));
   if (res.headersSent) return; // rate limit handler already responded
 
+  // ── Staging subdomain resolution ─────────────────────────────────────────
+  // staging.mysite.example.com → serves the latest staging deployment for mysite.example.com
+  // preview.mysite.example.com → same for preview deployments
+  let forcedEnvironment: string | null = null;
+  let effectiveHost = host;
+
+  const stagingPrefixes = ["staging.", "preview."];
+  for (const prefix of stagingPrefixes) {
+    if (host.startsWith(prefix)) {
+      effectiveHost = host.slice(prefix.length);
+      forcedEnvironment = prefix.slice(0, -1); // "staging" or "preview"
+      break;
+    }
+  }
+
   // ── Domain lookup (cache-first) ───────────────────────────────────────────
   let site: typeof sitesTable.$inferSelect | null = null;
 
-  const cached = getCachedSite(host);
-  if (cached) {
-    // Reconstruct minimal site object from cache
+  const cached = getCachedSite(effectiveHost);
+  if (cached && !forcedEnvironment) {
+    // Reconstruct minimal site object from cache (only for production — staging bypasses cache)
     site = {
       id: cached.siteId, domain: cached.domain,
       visibility: cached.visibility, passwordHash: cached.passwordHash,
@@ -249,25 +264,25 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
     } as typeof sitesTable.$inferSelect;
   } else {
     // Cache miss — query DB
-    const [byPrimary] = await db.select().from(sitesTable).where(eq(sitesTable.domain, host));
+    const [byPrimary] = await db.select().from(sitesTable).where(eq(sitesTable.domain, effectiveHost));
     if (byPrimary) {
       site = byPrimary;
     } else {
       const [customDomain] = await db
         .select({ siteId: customDomainsTable.siteId })
         .from(customDomainsTable)
-        .where(and(eq(customDomainsTable.domain, host), eq(customDomainsTable.status, "verified")));
+        .where(and(eq(customDomainsTable.domain, effectiveHost), eq(customDomainsTable.status, "verified")));
       if (customDomain) {
         const [bySiteId] = await db.select().from(sitesTable).where(eq(sitesTable.id, customDomain.siteId));
         if (bySiteId) site = bySiteId;
       }
     }
 
-    // Populate cache (even for null — we don't cache misses to avoid holding stale absence)
-    if (site) {
+    // Populate cache only for production requests (staging bypasses cache to stay fresh)
+    if (site && !forcedEnvironment) {
       setCachedSite({
         siteId: site.id,
-        domain: host,
+        domain: effectiveHost,
         visibility: (site.visibility as "public" | "private" | "password") ?? "public",
         passwordHash: site.passwordHash ?? null,
         unlockMessage: (site as any).unlockMessage ?? null,

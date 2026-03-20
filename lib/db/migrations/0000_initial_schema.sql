@@ -483,3 +483,6 @@ CREATE TABLE IF NOT EXISTS "webhooks" (
   "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "webhooks_site_idx" ON "webhooks"("site_id");
+
+-- ─── API token scopes ─────────────────────────────────────────────────────────
+ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "scopes" TEXT NOT NULL DEFAULT 'read,write,deploy';

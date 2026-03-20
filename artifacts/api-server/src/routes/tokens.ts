@@ -8,9 +8,12 @@ import { z } from "zod/v4";
 
 const router: IRouter = Router();
 
+const VALID_SCOPES = ["read", "write", "deploy", "admin"] as const;
+
 const CreateTokenBody = z.object({
-  name: z.string().min(1).max(80),
+  name:          z.string().min(1).max(80),
   expiresInDays: z.number().int().min(1).max(365).optional(),
+  scopes:        z.array(z.enum(VALID_SCOPES)).min(1).default(["read", "write", "deploy"]),
 });
 
 /**
@@ -69,14 +72,16 @@ router.post("/tokens", tokenLimiter, asyncHandler(async (req: Request, res: Resp
       name: parsed.data.name,
       tokenHash,
       tokenPrefix,
+      scopes: parsed.data.scopes.join(","),
       ...(expiresAt ? { expiresAt } : {}),
     })
     .returning({
-      id: apiTokensTable.id,
-      name: apiTokensTable.name,
+      id:          apiTokensTable.id,
+      name:        apiTokensTable.name,
       tokenPrefix: apiTokensTable.tokenPrefix,
-      expiresAt: apiTokensTable.expiresAt,
-      createdAt: apiTokensTable.createdAt,
+      scopes:      apiTokensTable.scopes,
+      expiresAt:   apiTokensTable.expiresAt,
+      createdAt:   apiTokensTable.createdAt,
     });
 
   // Return plaintext only this once

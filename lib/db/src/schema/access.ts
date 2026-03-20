@@ -43,10 +43,16 @@ export const apiTokensTable = pgTable("api_tokens", {
   tokenHash: text("token_hash").notNull(),
   /** First 8 chars of the token for display / revocation UX */
   tokenPrefix: text("token_prefix").notNull(),
+  /**
+   * Comma-separated permission scopes.
+   * Supported: read, write, deploy, admin
+   * Default: "read,write,deploy" (same as before this column existed — backwards compatible)
+   */
+  scopes: text("scopes").notNull().default("read,write,deploy"),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
-  expiresAt: timestamp("expires_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  expiresAt:  timestamp("expires_at",  { withTimezone: true }),
+  createdAt:  timestamp("created_at",  { withTimezone: true }).notNull().defaultNow(),
+  revokedAt:  timestamp("revoked_at",  { withTimezone: true }),
 }, (t) => [
   index("api_tokens_user_idx").on(t.userId),
 ]);

@@ -5,6 +5,7 @@ import { storage, ObjectNotFoundError } from "../lib/storageProvider";
 import { signMessage } from "../lib/federation";
 import { asyncHandler, AppError } from "../lib/errors";
 import { uploadLimiter, writeLimiter, deployLimiter } from "../middleware/rateLimiter";
+import { requireScope } from "../middleware/tokenAuth";
 import { webhookDeploy, webhookDeployFailed } from "../lib/webhooks";
 import { invalidateSiteCache } from "../lib/domainCache";
 import { enqueueSyncRetry } from "../lib/syncRetryQueue";
@@ -115,7 +116,7 @@ router.get("/sites/:id/files", asyncHandler(async (req: Request, res: Response) 
   res.json(files);
 }));
 
-router.post("/sites/:id/deploy", deployLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post("/sites/:id/deploy", deployLimiter, requireScope("deploy"), asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
 
   const siteId = parseInt(req.params.id as string, 10);
