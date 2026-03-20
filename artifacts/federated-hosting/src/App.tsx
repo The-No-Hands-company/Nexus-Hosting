@@ -19,6 +19,8 @@ import Directory from "@/pages/Directory";
 import SiteAnalytics from "@/pages/SiteAnalytics";
 import TokensPage from "@/pages/Tokens";
 import AdminPage from "@/pages/Admin";
+import Marketplace from "@/pages/Marketplace";
+import ApiDocs from "@/pages/ApiDocs";
 
 function onQueryError(error: unknown) {
   const err = error as { status?: number; message?: string };
@@ -64,6 +66,8 @@ function Router() {
           <Route path="/analytics/:id" component={SiteAnalytics} />
           <Route path="/tokens" component={TokensPage} />
           <Route path="/admin" component={AdminPage} />
+          <Route path="/network" component={Marketplace} />
+          <Route path="/api-docs" component={ApiDocs} />
           <Route component={NotFound} />
         </Switch>
       </ErrorBoundary>

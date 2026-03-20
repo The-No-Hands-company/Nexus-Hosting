@@ -1,25 +1,52 @@
 {
-  "name": "@workspace/cli",
+  "name": "@fedhost/cli",
   "version": "0.1.0",
-  "description": "FedHost CLI — deploy sites to your Federated Hosting node",
+  "description": "FedHost CLI — deploy static sites to your Federated Hosting node",
   "type": "module",
+  "license": "MIT",
+  "author": "The No Hands Company <dev@nohands.company>",
+  "homepage": "https://github.com/The-No-Hands-company/Federated-Hosting",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/The-No-Hands-company/Federated-Hosting.git",
+    "directory": "artifacts/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/The-No-Hands-company/Federated-Hosting/issues"
+  },
+  "keywords": [
+    "fedhost",
+    "federated",
+    "hosting",
+    "deploy",
+    "static-site",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "bin": {
     "fh": "./dist/index.js"
   },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.js --banner:js='#!/usr/bin/env node'",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "commander": "^13.1.0",
     "chalk": "^5.4.1",
-    "ora": "^8.2.0",
+    "commander": "^13.1.0",
+    "conf": "^13.1.0",
+    "form-data": "^4.0.2",
     "glob": "^11.0.1",
     "mime-types": "^3.0.1",
-    "conf": "^13.1.0",
     "node-fetch": "^3.3.2",
-    "form-data": "^4.0.2"
+    "ora": "^8.2.0"
   },
   "devDependencies": {
     "@types/mime-types": "^2.1.4",

@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
-import { Activity, LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio, BookMarked, Key, Shield } from "lucide-react";
+import { Activity, LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio, BookMarked, Key, Shield, Wifi, FileCode } from "lucide-react";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -16,11 +17,13 @@ import { useAuth } from "@workspace/replit-auth-web";
 import { useHealthStatus } from "@/lib/apiHooks";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/nodes", label: "Federation Nodes", icon: Server },
-  { href: "/sites", label: "Hosted Sites", icon: Globe },
-  { href: "/directory", label: "Sites Directory", icon: BookMarked },
-  { href: "/federation", label: "Federation Protocol", icon: Radio },
+  { href: "/",          label: "Dashboard",           icon: LayoutDashboard },
+  { href: "/nodes",     label: "Federation Nodes",    icon: Server },
+  { href: "/sites",     label: "Hosted Sites",        icon: Globe },
+  { href: "/directory", label: "Sites Directory",     icon: BookMarked },
+  { href: "/network",   label: "Node Network",        icon: Wifi },
+  { href: "/federation",label: "Federation Protocol", icon: Radio },
+  { href: "/api-docs",  label: "API Reference",       icon: FileCode },
 ];
 
 const AUTH_NAV_ITEMS = [
@@ -175,6 +178,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center justify-between text-xs font-mono">
               <span className="text-muted-foreground">Version</span>
               <span className="text-muted-foreground/80">{health?.version ? `v${health.version}` : "—"}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-xs font-mono">Language</span>
+              <LanguageSwitcher />
             </div>
           </div>
         </div>

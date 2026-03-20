@@ -131,6 +131,10 @@ app.get("/.well-known/federation", async (_req: Request, res: Response, next: Ne
   }
 });
 
+// ── ACME HTTP-01 challenge (must be at root, outside /api) ────────────────────
+import tlsRouter from "./routes/tls";
+app.use(tlsRouter);
+
 // ── API routes ─────────────────────────────────────────────────────────────────
 app.use("/api", router);
 

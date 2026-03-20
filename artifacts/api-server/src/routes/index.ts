@@ -15,6 +15,7 @@ import domainsRouter from "./domains";
 import adminRouter from "./admin";
 import gossipRouter from "./gossip";
 import webhooksRouter from "./webhooks";
+import tlsRouter from "./tls";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(accessRouter);
 router.use(domainsRouter);
 router.use(adminRouter);
 router.use(webhooksRouter);
+router.use(tlsRouter);
 
 export default router;

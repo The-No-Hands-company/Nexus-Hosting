@@ -130,3 +130,52 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `routes/index.ts` — webhooks router registered
 - `ROADMAP.md` — Phase 6 marked ✅, Phase 7 items updated
 
+
+---
+
+## [0.8.0] — Phase 8: i18n, Marketplace, TLS, API Docs, CLI npm publish
+
+### Added
+
+**Bahasa Indonesia internationalisation**
+- `src/i18n/en.json` — complete English translation strings for all UI text
+- `src/i18n/id.json` — complete Bahasa Indonesia translations (all nav, dashboard, deploy, analytics, tokens, admin, onboarding)
+- `src/i18n/index.ts` — i18next config with browser language detection + localStorage persistence
+- `LanguageSwitcher.tsx` — dropdown component in sidebar footer (🇬🇧 English / 🇮🇩 Bahasa Indonesia)
+- i18next, react-i18next, i18next-browser-languagedetector added to dependencies
+- Language preference stored in `fh_language` localStorage key
+
+**Node Network marketplace** (`pages/Marketplace.tsx`)
+- Searchable grid of all federation nodes with online/offline status
+- Per-node: name, domain, region, site count, storage, uptime, verified status
+- Bootstrap endpoint info box with copy button
+- Summary stat cards (total/online/verified/bootstrap nodes)
+- One-click domain copy, Inspect link to `/.well-known/federation`
+
+**ACME / Let's Encrypt TLS automation** (`routes/tls.ts`)
+- `GET /.well-known/acme-challenge/:token` — serves HTTP-01 challenges at root level
+- `GET /api/domains/:id/tls-status` — cert existence check, expiry, provisioning state
+- `POST /api/domains/:id/provision-tls` — registers challenge token; if `ACME_ENABLED=true` issues token; otherwise returns Caddy/certbot instructions
+- Challenge tokens expire after 10 minutes, cleaned up automatically
+
+**API Reference page** (`pages/ApiDocs.tsx`)
+- All endpoints grouped by tag (Health, Sites, Analytics, Federation, Access & Tokens, Admin)
+- Tag filter bar for fast navigation
+- Auth section: session cookie vs Bearer token with copy examples
+- Code examples: CLI deploy, fetch API, federation handshake, custom domain verification
+- Links to FEDERATION.md, SELF_HOSTING.md, GitHub repo
+
+**CLI npm publish readiness**
+- Package renamed `@fedhost/cli` (was `@workspace/cli`)
+- Added `author`, `license`, `homepage`, `repository`, `bugs`, `keywords`, `engines` fields
+- `files` list: `dist/`, `README.md`
+- `prepublishOnly` script runs `build` automatically
+- `README.md` with install, quick start, command table, GitHub Actions snippet
+- `.npmignore` excluding source files from npm bundle
+
+### Changed
+- `App.tsx` — `/network` and `/api-docs` routes added
+- `Layout.tsx` — Node Network + API Reference added to nav; LanguageSwitcher in sidebar footer
+- `routes/index.ts` + `app.ts` — TLS router registered (ACME challenge at root, domain routes at `/api`)
+- `ROADMAP.md` — Phase 8 items updated: i18n ✅, marketplace ✅, TLS ✅, API docs ✅, CLI publish 📋
+

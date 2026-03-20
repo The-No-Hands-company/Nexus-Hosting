@@ -96,13 +96,13 @@ Auto-seeded demo sites ship with every node on first boot.
 
 | Feature | Status | Notes |
 |---|---|---|
-| Bahasa Indonesia i18n | 📋 | Priority for Indonesian/SE Asian market |
+| Bahasa Indonesia i18n | ✅ | Full en + id translations, browser detection, localStorage persistence |
 | End-to-end test suite (Playwright) | ✅ | health.spec.ts + deploy.spec.ts (11-step critical path) |
 | OpenAPI spec sync with actual routes | ✅ | Redocly lint in CI, spec v0.7.0 fully covers all routes |
 | Webhook notifications | ✅ | node_offline, node_online, deploy, deploy_failed, new_peer — Ed25519 signed |
 | Rollback via CLI | ✅ | fh rollback --site <id> [--version <n>] with interactive picker |
 | fh analytics + fh status CLI commands | ✅ | ASCII bar charts for traffic, node health summary |
-| @fedhost/cli published to npm | 📋 | Required for GitHub Actions workflow |
+| @fedhost/cli published to npm | 🔄 | Package ready (@fedhost/cli), needs npm org + publish token |
 | Public bootstrap node registry | ✅ | GET /api/federation/bootstrap — healthy verified peers, 24h window |
 | Mobile-responsive layout audit | ✅ | Verified responsive grids across all pages |
 
@@ -112,11 +112,11 @@ Auto-seeded demo sites ship with every node on first boot.
 
 | Feature | Status | Notes |
 |---|---|---|
-| Node marketplace / directory | 🔮 | |
-| Let's Encrypt TLS automation | 🔮 | Auto-provision for custom domains |
+| Node marketplace / directory | ✅ | /network page — searchable node grid, bootstrap endpoint, status |
+| Let's Encrypt TLS automation | ✅ | HTTP-01 challenge serving, /provision-tls, Caddy/certbot instructions |
 | Geographic routing | 🔮 | Serve from closest node |
 | Paid plans / node sponsorship | 🔮 | Revenue model for operators |
-| Public API docs site | 🔮 | Generated from OpenAPI spec |
+| Public API docs site | ✅ | /api-docs page — endpoint browser, auth guide, code examples |
 
 ---
 
