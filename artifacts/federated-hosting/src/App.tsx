@@ -5,22 +5,25 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout/Layout";
+import { lazy, Suspense } from "react";
+import { LoadingState } from "@/components/shared";
 
-// Pages
-import Dashboard from "@/pages/Dashboard";
-import NodeList from "@/pages/nodes/NodeList";
-import NodeDetail from "@/pages/nodes/NodeDetail";
-import SiteList from "@/pages/sites/SiteList";
-import SiteDetail from "@/pages/sites/SiteDetail";
-import MySites from "@/pages/MySites";
-import DeploySite from "@/pages/DeploySite";
-import Federation from "@/pages/Federation";
-import Directory from "@/pages/Directory";
-import SiteAnalytics from "@/pages/SiteAnalytics";
-import TokensPage from "@/pages/Tokens";
-import AdminPage from "@/pages/Admin";
-import Marketplace from "@/pages/Marketplace";
-import ApiDocs from "@/pages/ApiDocs";
+// Lazy-load all pages so each route is a separate chunk.
+// Initial bundle only ships the shell (Layout, QueryClient, Router).
+const Dashboard      = lazy(() => import("@/pages/Dashboard"));
+const NodeList       = lazy(() => import("@/pages/nodes/NodeList"));
+const NodeDetail     = lazy(() => import("@/pages/nodes/NodeDetail"));
+const SiteList       = lazy(() => import("@/pages/sites/SiteList"));
+const SiteDetail     = lazy(() => import("@/pages/sites/SiteDetail"));
+const MySites        = lazy(() => import("@/pages/MySites"));
+const DeploySite     = lazy(() => import("@/pages/DeploySite"));
+const Federation     = lazy(() => import("@/pages/Federation"));
+const Directory      = lazy(() => import("@/pages/Directory"));
+const SiteAnalytics  = lazy(() => import("@/pages/SiteAnalytics"));
+const TokensPage     = lazy(() => import("@/pages/Tokens"));
+const AdminPage      = lazy(() => import("@/pages/Admin"));
+const Marketplace    = lazy(() => import("@/pages/Marketplace"));
+const ApiDocs        = lazy(() => import("@/pages/ApiDocs"));
 
 function onQueryError(error: unknown) {
   const err = error as { status?: number; message?: string };
@@ -53,23 +56,25 @@ function Router() {
   return (
     <Layout>
       <ErrorBoundary>
-        <Switch>
-          <Route path="/" component={Dashboard} />
-          <Route path="/nodes" component={NodeList} />
-          <Route path="/nodes/:id" component={NodeDetail} />
-          <Route path="/sites" component={SiteList} />
-          <Route path="/sites/:id" component={SiteDetail} />
-          <Route path="/my-sites" component={MySites} />
-          <Route path="/deploy/:id" component={DeploySite} />
-          <Route path="/directory" component={Directory} />
-          <Route path="/federation" component={Federation} />
-          <Route path="/analytics/:id" component={SiteAnalytics} />
-          <Route path="/tokens" component={TokensPage} />
-          <Route path="/admin" component={AdminPage} />
-          <Route path="/network" component={Marketplace} />
-          <Route path="/api-docs" component={ApiDocs} />
-          <Route component={NotFound} />
-        </Switch>
+        <Suspense fallback={<LoadingState />}>
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/nodes" component={NodeList} />
+            <Route path="/nodes/:id" component={NodeDetail} />
+            <Route path="/sites" component={SiteList} />
+            <Route path="/sites/:id" component={SiteDetail} />
+            <Route path="/my-sites" component={MySites} />
+            <Route path="/deploy/:id" component={DeploySite} />
+            <Route path="/directory" component={Directory} />
+            <Route path="/federation" component={Federation} />
+            <Route path="/analytics/:id" component={SiteAnalytics} />
+            <Route path="/tokens" component={TokensPage} />
+            <Route path="/admin" component={AdminPage} />
+            <Route path="/network" component={Marketplace} />
+            <Route path="/api-docs" component={ApiDocs} />
+            <Route component={NotFound} />
+          </Switch>
+        </Suspense>
       </ErrorBoundary>
     </Layout>
   );

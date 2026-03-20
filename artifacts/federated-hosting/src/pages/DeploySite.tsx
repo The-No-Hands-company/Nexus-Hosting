@@ -7,8 +7,7 @@ import {
   Globe, ExternalLink, AlertCircle, Loader2, FolderOpen, Trash2,
   RotateCcw, Eye, ChevronDown, ChevronRight, BarChart2,
   FileText, Image, Code, Package,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+} from "lucide-react";import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -18,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
+import { SitePreviewModal } from "@/components/SitePreviewModal";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -206,6 +206,7 @@ export default function DeploySite() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [rollingBackId, setRollingBackId] = useState<number|null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { t } = useTranslation();
@@ -365,6 +366,12 @@ export default function DeploySite() {
           <Card className="border-white/5">
             <CardHeader className="pb-3"><CardTitle className="text-white text-base">Quick Links</CardTitle></CardHeader>
             <CardContent className="space-y-2">
+              {files.length > 0 && (
+                <Button size="sm" variant="outline" onClick={() => setPreviewOpen(true)}
+                  className="w-full border-primary/30 text-primary hover:bg-primary/10 justify-start">
+                  <Eye className="w-3.5 h-3.5 mr-2"/>Preview Site
+                </Button>
+              )}
               <a href={`/api/sites/serve/${site.domain}/index.html`} target="_blank" rel="noopener noreferrer" className="block">
                 <Button size="sm" variant="outline" className="w-full border-white/10 text-muted-foreground hover:text-white justify-start"><Globe className="w-3.5 h-3.5 mr-2"/>Live Site</Button>
               </a>
@@ -379,6 +386,11 @@ export default function DeploySite() {
           </Card>
         </div>
       </div>
-    </div>
-  );
+
+      <SitePreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        siteDomain={site.domain}
+        siteId={siteId}
+      />
 }
