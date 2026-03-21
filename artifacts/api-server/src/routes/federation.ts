@@ -8,6 +8,7 @@ import { federationLimiter, writeLimiter } from "../middleware/rateLimiter";
 import { parsePagination, buildPaginatedResponse } from "../lib/pagination";
 import logger from "../lib/logger";
 import { resolveConflict } from "../lib/conflictResolution";
+import { isBlocked } from "./federationBlocks";
 import { federationSyncsTotal, federationPeersTotal } from "../lib/metrics";
 
 const router: IRouter = Router();
@@ -27,7 +28,13 @@ router.get("/federation/meta", asyncHandler(async (_req, res) => {
     nodeCount: allNodes.length,
     activeSites: activeDeployments.length,
     joinedAt: localNode?.joinedAt ?? new Date().toISOString(),
-    capabilities: ["site-hosting", "node-federation", "key-verification", "site-replication"],
+    capabilities: [
+      "site-hosting",
+      "node-federation",
+      "key-verification",
+      "site-replication",
+      ...(process.env.FEDERATED_STATIC_ONLY === "true" ? [] : ["dynamic-hosting", "nlpl"]),
+    ],
   });
 }));
 
@@ -36,6 +43,12 @@ router.post("/federation/ping", federationLimiter, asyncHandler(async (req, res)
 
   if (!nodeDomain || !challenge || !signature) {
     throw AppError.badRequest("Missing required fields: nodeDomain, challenge, signature");
+  }
+
+  // Reject blocked nodes immediately
+  if (isBlocked(nodeDomain)) {
+    logger.warn({ nodeDomain }, "[federation] Ping rejected — node is on blocklist");
+    throw AppError.forbidden("This node is not permitted to federate with us.");
   }
 
   // Reject stale messages — prevents replay attacks
@@ -203,6 +216,14 @@ router.post("/federation/sync", asyncHandler(async (req, res) => {
 
   if (!siteDomain || !deploymentId) {
     throw AppError.badRequest("Missing siteDomain or deploymentId");
+  }
+
+  // Reject blocked nodes
+  const fromHeader = (req.body as { fromDomain?: string }).fromDomain ??
+    req.headers["x-federation-from"] as string | undefined;
+  if (fromHeader && isBlocked(fromHeader)) {
+    logger.warn({ fromDomain: fromHeader, siteDomain }, "[federation] Sync rejected — node is on blocklist");
+    throw AppError.forbidden("This node is not permitted to federate with us.");
   }
 
   // Verify the signature on the sync message

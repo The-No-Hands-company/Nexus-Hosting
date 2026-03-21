@@ -492,3 +492,16 @@ ALTER TYPE "site_status" ADD VALUE IF NOT EXISTS 'maintenance';
 
 -- ─── Maintenance message column ───────────────────────────────────────────────
 ALTER TABLE "sites" ADD COLUMN IF NOT EXISTS "maintenance_message" TEXT;
+
+-- ─── Federation blocklist ─────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS "federation_blocks" (
+  "id"           SERIAL PRIMARY KEY,
+  "node_domain"  TEXT NOT NULL UNIQUE,
+  "reason"       TEXT,
+  "blocked_by"   TEXT,
+  "created_at"   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  "updated_at"   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS "federation_blocks_domain_idx" ON "federation_blocks"("node_domain");

@@ -71,8 +71,21 @@ router.get("/sites", asyncHandler(async (req, res) => {
 }));
 
 router.post("/sites", writeLimiter, asyncHandler(async (req, res) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
   const parsed = CreateSiteBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest(parsed.error.message);
+
+  // Enforce FEDERATED_STATIC_ONLY — only allow static/blog/portfolio site types
+  const dynamicTypes = ["nlpl", "dynamic", "node", "python"];
+  if (process.env.FEDERATED_STATIC_ONLY === "true" && dynamicTypes.includes(parsed.data.siteType ?? "")) {
+    throw AppError.badRequest(
+      `This node operates in static-only mode (FEDERATED_STATIC_ONLY=true). ` +
+      `Dynamic site types (${dynamicTypes.join(", ")}) are not permitted. ` +
+      `Create a static site or use a node that supports dynamic hosting.`,
+      "STATIC_ONLY_NODE",
+    );
+  }
 
   const [existing] = await db.select().from(sitesTable).where(eq(sitesTable.domain, parsed.data.domain));
   if (existing) throw AppError.conflict(`Domain '${parsed.data.domain}' is already registered`);

@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>Federated Hosting</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Node region — used by i18n to default to Bahasa for Indonesian nodes.
+         The TypeScript server replaces this placeholder at runtime via the
+         /api/health endpoint, or operators can set it at build time.
+         Format: AWS-style region e.g. ap-southeast-3 (Jakarta), us-east-1 -->
+    <meta name="fh-node-region" content="%VITE_NODE_REGION%" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">

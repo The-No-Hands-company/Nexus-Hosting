@@ -26,6 +26,7 @@ import { startAnalyticsFlusher, stopAnalyticsFlusher } from "./lib/analyticsFlus
 import { startGossipPusher, stopGossipPusher } from "./routes/gossip";
 import { getRedisClient, closeRedis } from "./lib/redis";
 import { startSyncRetryQueue, stopSyncRetryQueue } from "./lib/syncRetryQueue";
+import { loadBlocklist } from "./routes/federationBlocks";
 import { startAcmeRenewalScheduler, stopAcmeRenewalScheduler } from "./lib/acme";
 import { stopAllProcesses } from "./lib/processManager";
 import { startSiteHealthMonitor, stopSiteHealthMonitor } from "./lib/siteHealthMonitor";
@@ -128,6 +129,7 @@ ensureLocalNode()
     });
 
     startHealthMonitor();
+    await loadBlocklist();
     startAnalyticsFlusher();
     startGossipPusher();
     startSyncRetryQueue();

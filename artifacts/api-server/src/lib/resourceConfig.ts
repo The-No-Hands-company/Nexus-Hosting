@@ -86,6 +86,16 @@ export const GOSSIP_INTERVAL_MS = LOW_RESOURCE
   ? parseInt(process.env.GOSSIP_INTERVAL_MS ?? "600000")  // 10 minutes
   : parseInt(process.env.GOSSIP_INTERVAL_MS ?? "300000"); // 5 minutes
 
+/** Whether dynamic site hosting (NLPL/Node/Python) is disabled on this node */
+export const FEDERATED_STATIC_ONLY = process.env.FEDERATED_STATIC_ONLY === "true";
+
+if (FEDERATED_STATIC_ONLY) {
+  console.warn(
+    "[config] FEDERATED_STATIC_ONLY=true — dynamic site hosting disabled. " +
+    "This node only serves static sites (HTML/CSS/JS)."
+  );
+}
+
 if (LOW_RESOURCE) {
   // Log once at startup so operators know the mode is active
   // Using console directly since the logger may not be initialised yet

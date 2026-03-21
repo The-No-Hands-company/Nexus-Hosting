@@ -35,6 +35,7 @@ interface RuntimeInfo {
   pythonVersion: string | null;
   portRange: { start: number; end: number };
   installInstructions: string | null;
+  staticOnlyMode: boolean;
 }
 
 const RUNTIME_META: Record<string, { label: string; entryDefault: string; description: string; icon: string }> = {
@@ -198,8 +199,26 @@ export function NlplPanel({ siteId, siteDomain, siteType }: NlplPanelProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Runtime availability warning */}
-        {runtimeInfo && !runtimeInfo.available && (
+        {/* Static-only node warning */}
+        {runtimeInfo?.staticOnlyMode && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-start gap-2.5 bg-amber-400/10 border border-amber-400/20 rounded-xl p-3"
+          >
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <p className="text-amber-400 font-semibold mb-0.5">Static-only node</p>
+              <p className="text-muted-foreground">
+                This node has dynamic hosting disabled (<code className="text-amber-300">FEDERATED_STATIC_ONLY=true</code>).
+                To run {meta.label} apps, use a node with dynamic hosting enabled.
+              </p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* NLPL interpreter availability warning */}
+        {runtimeInfo && !runtimeInfo.available && !runtimeInfo.staticOnlyMode && (
           <motion.div
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -216,6 +235,7 @@ export function NlplPanel({ siteId, siteDomain, siteType }: NlplPanelProps) {
               </code>
             </div>
           </motion.div>
+        )}
         )}
 
         {/* Process details when running */}

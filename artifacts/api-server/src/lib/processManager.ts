@@ -267,6 +267,14 @@ export async function startSiteProcess(opts: {
   workDir: string;
   entryFile: string;
 }): Promise<{ port: number }> {
+  // Respect FEDERATED_STATIC_ONLY — operator may disable dynamic hosting
+  // for security/simplicity, especially important for volunteer nodes
+  if (process.env.FEDERATED_STATIC_ONLY === "true") {
+    throw new Error(
+      "Dynamic site hosting is disabled on this node (FEDERATED_STATIC_ONLY=true). " +
+      "This node only serves static sites. Contact the node operator to enable dynamic hosting.",
+    );
+  }
   const existing = processes.get(opts.siteId);
   if (existing && (existing.status === "running" || existing.status === "starting")) {
     return { port: existing.port };
