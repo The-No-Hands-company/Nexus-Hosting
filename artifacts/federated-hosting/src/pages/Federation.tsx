@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   Shield, Key, Radio, Activity, Loader2, CheckCircle, XCircle,
   Globe, AlertTriangle, Server, Clock, RefreshCw, Wifi, WifiOff,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Ban, Trash2, Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -73,6 +73,137 @@ function StatusDot({ status }: { status: string }) {
     maintenance: "bg-status-maintenance",
   };
   return <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${colors[status] ?? "bg-muted-foreground"}`} />;
+}
+
+// ── Blocklist card ────────────────────────────────────────────────────────────
+
+interface BlockEntry { id: number; nodeDomain: string; reason: string | null; createdAt: string; }
+
+function BlocklistCard() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [domain, setDomain] = useState("");
+  const [reason, setReason] = useState("");
+
+  const { data, isLoading } = useQuery<{ blocks: BlockEntry[]; total: number }>({
+    queryKey: ["federation-blocks"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/federation/blocks`, { credentials: "include" });
+      if (r.status === 403) return { blocks: [], total: 0 }; // not admin
+      return r.ok ? r.json() : { blocks: [], total: 0 };
+    },
+    staleTime: 30_000,
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`${BASE}/api/federation/blocks`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodeDomain: domain.trim(), reason: reason.trim() || undefined }),
+      });
+      if (!r.ok) { const b = await r.json() as { message?: string }; throw new Error(b.message ?? "Failed"); }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["federation-blocks"] });
+      setDomain(""); setReason("");
+      toast({ title: "Node blocked", description: `${domain.trim()} can no longer federate with this node.` });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (d: string) => {
+      const r = await fetch(`${BASE}/api/federation/blocks/${encodeURIComponent(d)}`, {
+        method: "DELETE", credentials: "include",
+      });
+      if (!r.ok) throw new Error("Failed to unblock");
+    },
+    onSuccess: (_, d) => {
+      qc.invalidateQueries({ queryKey: ["federation-blocks"] });
+      toast({ title: "Node unblocked", description: `${d} can federate again.` });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const blocks = data?.blocks ?? [];
+
+  return (
+    <Card className="glass-panel border-red-500/10">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-white flex items-center gap-2">
+          <Ban className="w-4 h-4 text-red-400" />
+          Defederation Blocklist
+        </CardTitle>
+        <CardDescription>
+          Blocked nodes cannot handshake, sync, or appear in bootstrap. They are not notified.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Add block form */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Input
+            placeholder="node.example.com"
+            value={domain}
+            onChange={e => setDomain(e.target.value)}
+            className="bg-muted/20 border-white/8 font-mono text-sm flex-1"
+          />
+          <Input
+            placeholder="Reason (optional)"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            className="bg-muted/20 border-white/8 text-sm flex-1"
+          />
+          <Button
+            onClick={() => addMutation.mutate()}
+            disabled={!domain.trim() || addMutation.isPending}
+            className="bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 shrink-0"
+            variant="outline"
+          >
+            {addMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Ban className="w-4 h-4 mr-1.5" />Block</>}
+          </Button>
+        </div>
+
+        {/* Block list */}
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
+            <Loader2 className="w-4 h-4 animate-spin" />Loading blocklist…
+          </div>
+        ) : blocks.length === 0 ? (
+          <p className="text-muted-foreground text-sm py-2">
+            No nodes blocked. The federation is open.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {blocks.map(b => (
+              <motion.div
+                key={b.id}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-3 bg-red-500/5 border border-red-500/15 rounded-lg px-3 py-2"
+              >
+                <Ban className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                <span className="font-mono text-sm text-white/80 flex-1 truncate">{b.nodeDomain}</span>
+                {b.reason && <span className="text-xs text-muted-foreground truncate hidden sm:block max-w-[200px]">{b.reason}</span>}
+                <span className="text-xs text-muted-foreground shrink-0">
+                  {formatDistanceToNow(new Date(b.createdAt), { addSuffix: true })}
+                </span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="w-7 h-7 text-muted-foreground hover:text-red-400 shrink-0"
+                  onClick={() => removeMutation.mutate(b.nodeDomain)}
+                  title="Unblock"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function Federation() {
@@ -472,6 +603,9 @@ export default function Federation() {
           )}
         </CardContent>
       </Card>
+
+      {/* Blocklist Card */}
+      <BlocklistCard />
 
       {/* Protocol Reference (collapsible) */}
       <Card className="glass-panel">

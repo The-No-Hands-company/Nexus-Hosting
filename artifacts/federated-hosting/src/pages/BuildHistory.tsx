@@ -8,11 +8,106 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@workspace/auth-web";
 import { LoadingState } from "@/components/shared";
-import { GitBranch, Play, XCircle, Terminal, ChevronLeft, Clock, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { GitBranch, Play, XCircle, Terminal, ChevronLeft, Clock, CheckCircle2, AlertCircle, Loader2, Copy, Check, Webhook, ChevronDown, ChevronUp } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function CopySnippet({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center justify-between bg-black/40 rounded-lg px-3 py-2 font-mono text-xs">
+      <code className="text-primary/90 truncate">{text}</code>
+      <button
+        onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+        className="ml-2 text-muted-foreground hover:text-white transition-colors shrink-0"
+      >
+        {copied ? <Check className="w-3.5 h-3.5 text-status-active" /> : <Copy className="w-3.5 h-3.5" />}
+      </button>
+    </div>
+  );
+}
+
+function GitWebhookGuide({ siteId }: { siteId: number }) {
+  const [open, setOpen] = useState(false);
+  const webhookUrl = `${window.location.origin}/api/git-webhook/${siteId}`;
+
+  return (
+    <Card className="border-white/5">
+      <CardHeader className="cursor-pointer select-none pb-3" onClick={() => setOpen(o => !o)}>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-white text-sm flex items-center gap-2">
+            <Webhook className="w-4 h-4 text-primary" />
+            Auto-deploy on Git Push
+          </CardTitle>
+          {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </div>
+        {!open && <CardDescription className="text-xs mt-0.5">Connect GitHub or GitLab to deploy automatically on every push.</CardDescription>}
+      </CardHeader>
+
+      {open && (
+        <CardContent className="space-y-5 pt-0">
+          <p className="text-muted-foreground text-sm">
+            FedHost can automatically build and deploy your site when you push to a Git branch.
+            Set up a webhook in your repository to trigger builds.
+          </p>
+
+          {/* Step 1 */}
+          <div className="space-y-2">
+            <p className="text-white text-xs font-semibold">Step 1 — Add a webhook secret to this site</p>
+            <p className="text-muted-foreground text-xs">
+              Go to <strong className="text-white">Site Settings → Env Vars</strong> and add:
+            </p>
+            <CopySnippet text="GIT_WEBHOOK_SECRET=your-random-secret-here" />
+            <p className="text-muted-foreground/70 text-xs">
+              Use any long random string. You'll use the same value in the repository webhook settings.
+            </p>
+          </div>
+
+          {/* Step 2 — GitHub */}
+          <div className="space-y-2">
+            <p className="text-white text-xs font-semibold">Step 2a — GitHub</p>
+            <ol className="text-muted-foreground text-xs space-y-1.5 list-none">
+              <li>1. Repository → <strong className="text-white">Settings → Webhooks → Add webhook</strong></li>
+              <li>2. Payload URL:</li>
+            </ol>
+            <CopySnippet text={webhookUrl} />
+            <ol className="text-muted-foreground text-xs space-y-1.5 list-none">
+              <li>3. Content type: <code className="text-primary">application/json</code></li>
+              <li>4. Secret: the value you set for <code className="text-primary">GIT_WEBHOOK_SECRET</code></li>
+              <li>5. Events: <strong className="text-white">Just the push event</strong></li>
+            </ol>
+          </div>
+
+          {/* Step 2 — GitLab */}
+          <div className="space-y-2">
+            <p className="text-white text-xs font-semibold">Step 2b — GitLab</p>
+            <ol className="text-muted-foreground text-xs space-y-1.5 list-none">
+              <li>1. Project → <strong className="text-white">Settings → Webhooks</strong></li>
+              <li>2. URL:</li>
+            </ol>
+            <CopySnippet text={webhookUrl} />
+            <ol className="text-muted-foreground text-xs space-y-1.5 list-none">
+              <li>3. Secret token: same value as <code className="text-primary">GIT_WEBHOOK_SECRET</code></li>
+              <li>4. Trigger: <strong className="text-white">Push events</strong></li>
+            </ol>
+          </div>
+
+          {/* How it works */}
+          <div className="bg-muted/20 border border-white/5 rounded-xl p-3 text-xs text-muted-foreground space-y-1">
+            <p className="text-white font-semibold mb-1.5">What happens on push</p>
+            <p>1. GitHub/GitLab sends a signed POST to the webhook URL</p>
+            <p>2. FedHost verifies the signature using <code className="text-primary">GIT_WEBHOOK_SECRET</code></p>
+            <p>3. A build job is queued: clone → install deps → <code className="text-primary">npm run build</code> → deploy</p>
+            <p>4. Build logs appear in this page in real time</p>
+            <p>5. On success, the new deployment goes live instantly</p>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
 
 // Auto-scrolling log pane — polls every 2s while build is running
 function LogPane({ siteId, buildId, status }: { siteId: number; buildId: number; status: string }) {
@@ -216,6 +311,8 @@ export default function BuildHistory() {
             </CardContent>
           </Card>
         )}
+
+        <GitWebhookGuide siteId={siteId} />
       </div>
     </div>
   );

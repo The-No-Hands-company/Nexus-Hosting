@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LoadingState, ErrorState, StatusBadge } from "@/components/shared";
 import {
   Server, Users, Globe, Activity, HardDrive, Cpu, MemoryStick,
-  TrendingUp, Settings, LogIn, RefreshCw, Zap, Radio,
+  TrendingUp, Settings, LogIn, RefreshCw, Zap, Radio, Loader2,
   ClipboardList, HeartPulse, CheckCircle2, AlertTriangle, XCircle,
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -338,7 +338,118 @@ export default function AdminPage() {
   );
 }
 
-// ── Audit Log tab ──────────────────────────────────────────────────────────────
+// ── Processes tab ─────────────────────────────────────────────────────────────
+
+interface ProcessInfo {
+  siteId: number; domain: string; runtime: string; port: number;
+  status: string; pid: number | null; restartCount: number;
+  startedAt: string | null; lastCrashAt: string | null;
+}
+
+function ProcessesTab() {
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const { toast } = useToast();
+
+  const { data, isLoading, refetch } = useQuery<{ processes: ProcessInfo[]; total: number }>({
+    queryKey: ["admin-processes"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/admin/processes`, { credentials: "include" });
+      return r.ok ? r.json() : { processes: [], total: 0 };
+    },
+    refetchInterval: 10_000,
+  });
+
+  const processes = data?.processes ?? [];
+
+  const stopMutation = useMutation({
+    mutationFn: async (siteId: number) => {
+      const r = await fetch(`${BASE}/api/sites/${siteId}/nlpl/stop`, {
+        method: "POST", credentials: "include",
+      });
+      if (!r.ok) throw new Error("Failed to stop process");
+    },
+    onSuccess: () => { refetch(); toast({ title: "Process stopped" }); },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const STATUS_COLOR: Record<string, string> = {
+    running:  "text-status-active",
+    starting: "text-amber-400",
+    crashed:  "text-red-400",
+    stopped:  "text-muted-foreground",
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {processes.length === 0 ? "No active processes." : `${processes.length} running process${processes.length !== 1 ? "es" : ""}`}
+        </p>
+        <Button variant="ghost" size="sm" onClick={() => refetch()} className="text-muted-foreground hover:text-white gap-1.5">
+          <RefreshCw className="w-3.5 h-3.5" />Refresh
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground py-4 justify-center">
+          <Loader2 className="w-4 h-4 animate-spin" />Loading processes…
+        </div>
+      ) : processes.length === 0 ? (
+        <div className="text-center py-10 border border-dashed border-white/10 rounded-xl">
+          <Cpu className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
+          <p className="text-muted-foreground text-sm">No dynamic site processes running.</p>
+          <p className="text-muted-foreground/60 text-xs mt-1">Processes appear here when NLPL, Node.js, or Python sites are started.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {processes.map(p => (
+            <div key={p.siteId} className="bg-muted/20 border border-white/5 rounded-xl px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${p.status === "running" ? "bg-status-active animate-pulse" : p.status === "crashed" ? "bg-red-400" : "bg-amber-400"}`} />
+                    <span className={`text-xs font-semibold ${STATUS_COLOR[p.status] ?? "text-muted-foreground"}`}>{p.status}</span>
+                  </div>
+                  <span className="font-mono text-sm text-white truncate">{p.domain}</span>
+                  <Badge variant="outline" className="border-white/10 text-muted-foreground text-xs shrink-0">
+                    {p.runtime}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
+                  <span className="hidden sm:block font-mono">:{p.port}</span>
+                  <span className="hidden md:block">pid {p.pid ?? "—"}</span>
+                  {p.restartCount > 0 && (
+                    <span className="text-amber-400">{p.restartCount} restart{p.restartCount !== 1 ? "s" : ""}</span>
+                  )}
+                  {p.startedAt && (
+                    <span className="hidden lg:block">{formatDistanceToNow(new Date(p.startedAt), { addSuffix: true })}</span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-red-400"
+                    onClick={() => stopMutation.mutate(p.siteId)}
+                    disabled={stopMutation.isPending}
+                  >
+                    Stop
+                  </Button>
+                </div>
+              </div>
+              {p.status === "crashed" && p.lastCrashAt && (
+                <p className="text-xs text-red-400 mt-1.5 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3 h-3" />
+                  Last crash {formatDistanceToNow(new Date(p.lastCrashAt), { addSuffix: true })}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Audit Log tab ─────────────────────────────────────────────────────────────
 function AuditLogTab() {
   const [page, setPage] = useState(1);
   const { data } = useQuery<{ data: Array<{ id: number; actorEmail: string | null; action: string; targetType: string | null; targetId: string | null; metadata: Record<string, unknown> | null; ipAddress: string | null; createdAt: string }>; meta: { total: number; page: number; limit: number } }>({
@@ -443,7 +554,7 @@ function SiteHealthTab() {
         </div>
       )}
 
-      {/* ── Secondary tabs: Audit Log + Site Health ── */}
+      {/* ── Secondary tabs: Audit Log + Site Health + Processes ── */}
       <Tabs defaultValue="audit">
         <TabsList className="bg-muted/30 border border-white/5">
           <TabsTrigger value="audit" className="gap-1.5">
@@ -452,12 +563,18 @@ function SiteHealthTab() {
           <TabsTrigger value="health" className="gap-1.5">
             <HeartPulse className="w-3.5 h-3.5" />Site Health
           </TabsTrigger>
+          <TabsTrigger value="processes" className="gap-1.5">
+            <Cpu className="w-3.5 h-3.5" />Processes
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="audit" className="mt-4">
           <AuditLogTab />
         </TabsContent>
         <TabsContent value="health" className="mt-4">
           <SiteHealthTab />
+        </TabsContent>
+        <TabsContent value="processes" className="mt-4">
+          <ProcessesTab />
         </TabsContent>
       </Tabs>
     </div>

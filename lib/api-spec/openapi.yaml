@@ -3661,3 +3661,84 @@ components:
       responses:
         '200': {description: File content}
         '404': {description: File not found}
+
+  # ── Federation blocklist (defederation) ─────────────────────────────────────
+
+  /federation/blocks:
+    get:
+      summary: List blocked federation nodes (admin only)
+      tags: [Federation]
+      security: [{sessionCookie: []}]
+      responses:
+        '200':
+          description: Blocklist with total count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blocks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:          {type: integer}
+                        nodeDomain:  {type: string}
+                        reason:      {type: string, nullable: true}
+                        blockedBy:   {type: string, nullable: true}
+                        createdAt:   {type: string, format: date-time}
+                  total: {type: integer}
+        '403': {description: Admin access required}
+    post:
+      summary: Block a federation node (admin only)
+      tags: [Federation]
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nodeDomain]
+              properties:
+                nodeDomain: {type: string, description: Domain of the node to block}
+                reason:     {type: string, maxLength: 500}
+      responses:
+        '201':
+          description: Node blocked — also marks the peer as inactive in nodes table
+        '409': {description: Node is already blocked}
+        '403': {description: Admin access required}
+
+  /federation/blocks/{domain}:
+    delete:
+      summary: Unblock a federation node (admin only)
+      tags: [Federation]
+      security: [{sessionCookie: []}]
+      parameters:
+        - {name: domain, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Node unblocked}
+        '404': {description: No block found for this domain}
+        '403': {description: Admin access required}
+
+  /federation/blocks/check:
+    get:
+      summary: Check whether a domain is on this node's blocklist (public)
+      description: |
+        Peers can call this before initiating a handshake to avoid a wasted
+        round-trip. Returns 200 with blocked=true/false rather than 403 so
+        callers can handle it gracefully without error logic.
+      tags: [Federation]
+      parameters:
+        - {name: domain, in: query, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Block status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain:  {type: string}
+                  blocked: {type: boolean}
+        '400': {description: domain query parameter missing}
