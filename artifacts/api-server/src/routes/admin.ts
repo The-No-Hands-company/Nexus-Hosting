@@ -144,12 +144,16 @@ router.get("/admin/users", requireAdmin, asyncHandler(async (req: Request, res: 
 
   const users = await db
     .select({
-      id: usersTable.id,
-      email: usersTable.email,
-      firstName: usersTable.firstName,
-      lastName: usersTable.lastName,
+      id:              usersTable.id,
+      email:           usersTable.email,
+      firstName:       usersTable.firstName,
+      lastName:        usersTable.lastName,
       profileImageUrl: usersTable.profileImageUrl,
-      createdAt: usersTable.createdAt,
+      createdAt:       usersTable.createdAt,
+      emailVerified:   usersTable.emailVerified,
+      storageCapMb:    usersTable.storageCapMb,
+      suspendedAt:     usersTable.suspendedAt,
+      isAdmin:         usersTable.isAdmin,
       siteCount: sql<number>`(select count(*) from sites where sites.owner_id = users.id)`,
     })
     .from(usersTable)

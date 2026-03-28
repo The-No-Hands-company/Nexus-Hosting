@@ -96,6 +96,18 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
 app.use(apiBanMiddleware);
 
+// Block suspended users from using the API
+app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (req.isAuthenticated() && (req.user as any)?.suspendedAt) {
+    res.status(403).json({
+      error: "Your account has been suspended. Contact the node operator.",
+      code: "ACCOUNT_SUSPENDED",
+    });
+    return;
+  }
+  next();
+});
+
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 app.use(globalLimiter);
 app.use(speedLimiter);

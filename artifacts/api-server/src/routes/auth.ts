@@ -178,6 +178,12 @@ router.get("/callback", async (req: Request, res: Response) => {
       .catch(() => {}); // Non-blocking — never fail login over this
   }
 
+  // Block suspended users before issuing a session
+  if (dbUser.suspendedAt) {
+    res.redirect("/?error=account_suspended");
+    return;
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {
     user: {

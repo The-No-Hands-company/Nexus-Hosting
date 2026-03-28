@@ -345,7 +345,11 @@ export default function AdminPage() {
 
 // ── Admin Users tab ───────────────────────────────────────────────────────────
 
-interface AdminUser { id: string; email: string; firstName: string | null; lastName: string | null; createdAt: string; siteCount: number; }
+interface AdminUser {
+  id: string; email: string; firstName: string | null; lastName: string | null;
+  createdAt: string; siteCount: number; storageCapMb?: number; suspendedAt?: string | null;
+  emailVerified?: number;
+}
 
 // ── Moderation Tab ────────────────────────────────────────────────────────────
 
@@ -694,14 +698,28 @@ function AdminUsersTab() {
                   {(u.firstName?.[0] ?? u.email?.[0] ?? "?").toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm truncate">
-                    {u.firstName ? `${u.firstName} ${u.lastName ?? ""}`.trim() : u.email}
-                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-white text-sm truncate">
+                      {u.firstName ? `${u.firstName} ${u.lastName ?? ""}`.trim() : u.email}
+                    </p>
+                    {u.suspendedAt && (
+                      <span className="text-xs px-1.5 py-0.5 rounded border border-red-400/30 bg-red-400/10 text-red-400 shrink-0">suspended</span>
+                    )}
+                    {!u.emailVerified && (
+                      <span className="text-xs px-1.5 py-0.5 rounded border border-amber-400/30 bg-amber-400/10 text-amber-400 shrink-0">unverified</span>
+                    )}
+                  </div>
                   <p className="text-muted-foreground text-xs truncate">{u.email}</p>
                 </div>
                 <div className="text-right shrink-0 hidden sm:block">
                   <p className="text-white text-sm">{u.siteCount}</p>
                   <p className="text-muted-foreground text-xs">sites</p>
+                </div>
+                <div className="text-right shrink-0 hidden lg:block">
+                  {(u.storageCapMb ?? 0) > 0
+                    ? <p className="text-white text-xs font-mono">{u.storageCapMb} MB cap</p>
+                    : <p className="text-muted-foreground text-xs">unlimited</p>
+                  }
                 </div>
                 <p className="text-muted-foreground text-xs shrink-0 hidden md:block">
                   {formatDistanceToNow(new Date(u.createdAt), { addSuffix: true })}

@@ -374,37 +374,88 @@ certbot --nginx -d node.yourdomain.com
 
 ## Joining the Federation
 
-Once your node is running at a public domain:
+Once your node is running at a public domain, you need peers to federate with.
+
+### Automatic bootstrap (recommended)
+
+Set `BOOTSTRAP_URLS` in your `.env` to a comma-separated list of bootstrap endpoints. On startup, your node will fetch peer lists from these URLs and register any new nodes automatically. After the initial seed, gossip handles ongoing discovery.
+
+```env
+# .env
+BOOTSTRAP_URLS=https://bootstrap.fedhosting.network/api/federation/bootstrap
+```
+
+Multiple bootstrap nodes for redundancy:
+```env
+BOOTSTRAP_URLS=https://bootstrap1.example.com/api/federation/bootstrap,https://bootstrap2.example.com/api/federation/bootstrap
+```
+
+The bootstrap URL is just any running FedHost node's `/api/federation/bootstrap` endpoint. You can use any node operator willing to act as a seed for new nodes.
+
+**After setting BOOTSTRAP_URLS**, restart your node and check the logs:
+```bash
+docker compose restart app
+docker compose logs app | grep bootstrap
+# [bootstrap] Seeded peer from bootstrap: domain=peer.example.com
+# [bootstrap] Seed complete — added 3 new peer(s)
+```
+
+### Manual handshake (UI)
 
 1. Open the **Federation Protocol** page in your node's UI
-2. Click **Initiate Handshake** and enter another node's domain (e.g. `nodes.fedhosting.network`)
-3. The remote node will verify your Ed25519 signature and register you as a peer
-4. Your sites will now automatically replicate to verified peers on every deploy
+2. Click **Initiate Handshake** and enter a known peer's domain
+3. The remote node verifies your Ed25519 signature and registers you as a peer
+4. Your sites now replicate to verified peers on every deploy
 
-To register with the public bootstrap node:
+### Manual handshake (API)
 
 ```bash
-curl -X POST https://nodes.fedhosting.network/api/federation/handshake \
+curl -X POST https://your-node.example.com/api/federation/handshake \
   -H "Content-Type: application/json" \
-  -d '{"domain": "node.yourdomain.com"}'
+  -H "Authorization: Bearer <your-admin-token>" \
+  -d '{"targetNodeUrl": "https://peer.example.com"}'
+```
+
+### Running your own bootstrap node
+
+Any FedHost node can serve as a bootstrap node — the endpoint is always available at `GET /api/federation/bootstrap`. To make your node discoverable, simply share your `/api/federation/bootstrap` URL with other operators.
+
+There is no central authority or required registration. The network is as decentralised as its operators choose to make it.
+
+### Trust levels
+
+Federation peers start as `unverified`. They automatically promote to:
+- **verified** — after the first successful Ed25519 handshake
+- **trusted** — after 50 consecutive successful pings (~4 days of normal operation)
+
+You can manually override trust levels in **Admin → Moderation → Node Trust Scores**. Setting a node to `blocked` defederates it — equivalent to adding it to the federation blocklist.
+
+To register with the public bootstrap node (if one exists for your deployment):
+
+```bash
+curl -X POST https://your-node.example.com/api/federation/handshake \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <admin-token>" \
+  -d '{"targetNodeUrl": "https://bootstrap.fedhosting.network"}'
 ```
 
 ---
 
 ## Upgrading
 
+See **[docs/UPGRADE.md](./UPGRADE.md)** for the full upgrade runbook, including:
+- Zero-downtime rolling upgrades (2+ instances)
+- How to verify schema version before and after
+- Rollback procedure
+- New required environment variables per release
+
+Quick version for single-instance setups:
+
 ```bash
-# Pull latest code
 git pull origin main
-
-# Rebuild containers
-docker compose build
-
-# Apply any DB schema changes
-docker compose run --rm migrate
-
-# Restart the app
-docker compose up -d app
+docker compose pull
+docker compose run --rm migrate   # always run migrations first
+docker compose up -d --force-recreate app proxy
 ```
 
 ---

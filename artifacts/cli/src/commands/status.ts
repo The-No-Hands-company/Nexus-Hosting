@@ -133,9 +133,34 @@ export const statusCommand = new Command("status")
     // Show authenticated user's sites if logged in
     if (cfg.token) {
       try {
+        // Fetch user profile for storage cap
+        const userProfile = await apiFetch<{
+          user: { id: string; email: string; storageCapMb: number; emailVerified: number } | null
+        }>("/auth/user").catch(() => ({ user: null }));
+
         const sites = await apiFetch<{ data: Array<{ id: number; name: string; domain: string; status: string; storageUsedMb: number }> }>(
           "/sites?limit=5"
         );
+
+        if (userProfile.user) {
+          const totalUsedMb = sites.data?.reduce((sum: number, s: { storageUsedMb: number }) => sum + s.storageUsedMb, 0) ?? 0;
+          const cap = userProfile.user.storageCapMb ?? 0;
+
+          console.log(chalk.bold("  Your Account"));
+          console.log(`  ${chalk.dim("Email:")}      ${userProfile.user.email ?? "—"}${userProfile.user.emailVerified ? "" : chalk.yellow(" (unverified)")}`);
+
+          if (cap > 0) {
+            const pct = ((totalUsedMb / cap) * 100).toFixed(1);
+            const barWidth = 20;
+            const filled = Math.round((totalUsedMb / cap) * barWidth);
+            const bar = chalk.cyan("█".repeat(filled)) + chalk.dim("░".repeat(barWidth - filled));
+            console.log(`  ${chalk.dim("Storage:")}    ${bar} ${totalUsedMb.toFixed(0)} / ${cap} MB (${pct}%)`);
+          } else {
+            console.log(`  ${chalk.dim("Storage:")}    ${totalUsedMb.toFixed(0)} MB used ${chalk.dim("(no cap set)")}`);
+          }
+          console.log();
+        }
+
         if (sites.data?.length) {
           console.log(chalk.bold("  Your Sites"));
           for (const s of sites.data) {
