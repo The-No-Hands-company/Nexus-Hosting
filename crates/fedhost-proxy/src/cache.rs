@@ -1,16 +1,29 @@
-//! LRU cache for domain → site metadata and file path → object path lookups.
+//! LRU caches for domain → site metadata and file path → object path.
 //!
-//! In a single-instance deployment, this is an in-process LRU.
-//! When REDIS_URL is set, a Redis-backed layer is added so multiple proxy
-//! instances share the same invalidation signals (sent by the TypeScript
-//! API server on every deploy via `PUBLISH fedhost:cache:invalidate <siteId>`).
+//! ## Two-level caching
+//!
+//! - In-process `lru::LruCache` behind a `RwLock` — zero network overhead
+//! - Optional Redis layer for cache invalidation signals across multiple proxy
+//!   instances (subscribe to `fedhost:cache:invalidate <siteId>` channel)
+//!
+//! ## Invalidation
+//!
+//! The TypeScript API server publishes a Redis PUBLISH whenever a site is
+//! deployed or settings change:
+//!   `PUBLISH fedhost:cache:invalidate <siteId>`
+//!
+//! The Redis subscriber (TODO #4) calls `invalidate_site()` on both caches.
 
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use std::collections::HashMap;
+use lru::LruCache;
 
-/// Minimal site record needed for routing and access control.
+/// How long a cached entry remains valid before a DB re-check.
+const TTL: Duration = Duration::from_secs(300); // 5 minutes — matches TypeScript
+
+/// Minimal site record for routing and access control.
 #[derive(Debug, Clone)]
 pub struct CachedSite {
     pub site_id:       i32,
@@ -38,7 +51,7 @@ impl From<&str> for SiteVisibility {
     }
 }
 
-/// Minimal file record needed for serving.
+/// Minimal file record for serving.
 #[derive(Debug, Clone)]
 pub struct CachedFile {
     pub object_path:  String,
@@ -47,38 +60,7 @@ pub struct CachedFile {
     pub cached_at:    Instant,
 }
 
-const TTL: Duration = Duration::from_secs(300); // 5-minute TTL
-
-/// Simple fixed-capacity LRU using insertion-order HashMap eviction.
-/// Replace with the `lru` crate for production.
-pub struct LruCache<K, V> {
-    map:      HashMap<K, V>,
-    capacity: usize,
-}
-
-impl<K: std::hash::Hash + Eq + Clone, V> LruCache<K, V> {
-    pub fn new(capacity: usize) -> Self {
-        Self { map: HashMap::with_capacity(capacity.min(1024)), capacity }
-    }
-
-    pub fn get(&self, key: &K) -> Option<&V> {
-        self.map.get(key)
-    }
-
-    pub fn insert(&mut self, key: K, value: V) {
-        if self.map.len() >= self.capacity {
-            // Simple eviction: remove the first key (not true LRU — use `lru` crate in prod)
-            if let Some(k) = self.map.keys().next().cloned() {
-                self.map.remove(&k);
-            }
-        }
-        self.map.insert(key, value);
-    }
-
-    pub fn remove(&mut self, key: &K) {
-        self.map.remove(key);
-    }
-}
+// ── Domain cache ──────────────────────────────────────────────────────────────
 
 pub struct DomainCache {
     inner: Arc<RwLock<LruCache<String, CachedSite>>>,
@@ -86,31 +68,39 @@ pub struct DomainCache {
 
 impl DomainCache {
     pub fn new(capacity: usize) -> Self {
-        Self { inner: Arc::new(RwLock::new(LruCache::new(capacity))) }
+        let cap = NonZeroUsize::new(capacity.max(1)).expect("capacity > 0");
+        Self { inner: Arc::new(RwLock::new(LruCache::new(cap))) }
     }
 
     pub async fn get(&self, domain: &str) -> Option<CachedSite> {
-        let guard = self.inner.read().await;
-        guard.get(&domain.to_string()).and_then(|entry| {
-            if entry.cached_at.elapsed() < TTL { Some(entry.clone()) } else { None }
+        let mut guard = self.inner.write().await; // write for LRU ordering
+        guard.get(domain).and_then(|e| {
+            if e.cached_at.elapsed() < TTL { Some(e.clone()) } else { None }
         })
     }
 
     pub async fn insert(&self, site: CachedSite) {
         let mut guard = self.inner.write().await;
-        guard.insert(site.domain.clone(), site);
+        guard.put(site.domain.clone(), site);
     }
 
+    /// Remove all entries for a site (called on deploy / settings change).
     pub async fn invalidate_site(&self, site_id: i32) {
         let mut guard = self.inner.write().await;
-        // Find all domains pointing to this site and remove them
-        let keys: Vec<String> = guard.map.iter()
+        // lru crate doesn't support predicate removal — collect keys first
+        let keys: Vec<String> = guard.iter()
             .filter(|(_, v)| v.site_id == site_id)
             .map(|(k, _)| k.clone())
             .collect();
-        for k in keys { guard.remove(&k); }
+        for k in keys { guard.pop(&k); }
+    }
+
+    pub async fn len(&self) -> usize {
+        self.inner.read().await.len()
     }
 }
+
+// ── File cache ────────────────────────────────────────────────────────────────
 
 pub struct FileCache {
     inner: Arc<RwLock<LruCache<String, CachedFile>>>,
@@ -118,7 +108,8 @@ pub struct FileCache {
 
 impl FileCache {
     pub fn new(capacity: usize) -> Self {
-        Self { inner: Arc::new(RwLock::new(LruCache::new(capacity))) }
+        let cap = NonZeroUsize::new(capacity.max(1)).expect("capacity > 0");
+        Self { inner: Arc::new(RwLock::new(LruCache::new(cap))) }
     }
 
     pub fn key(site_id: i32, file_path: &str) -> String {
@@ -126,7 +117,7 @@ impl FileCache {
     }
 
     pub async fn get(&self, site_id: i32, file_path: &str) -> Option<CachedFile> {
-        let guard = self.inner.read().await;
+        let mut guard = self.inner.write().await;
         guard.get(&Self::key(site_id, file_path)).and_then(|e| {
             if e.cached_at.elapsed() < TTL { Some(e.clone()) } else { None }
         })
@@ -134,6 +125,20 @@ impl FileCache {
 
     pub async fn insert(&self, site_id: i32, file_path: &str, file: CachedFile) {
         let mut guard = self.inner.write().await;
-        guard.insert(Self::key(site_id, file_path), file);
+        guard.put(Self::key(site_id, file_path), file);
+    }
+
+    /// Remove all file entries for a site (called on deploy).
+    pub async fn invalidate_site(&self, site_id: i32) {
+        let mut guard = self.inner.write().await;
+        let keys: Vec<String> = guard.iter()
+            .filter(|(k, _)| k.starts_with(&format!("{}:", site_id)))
+            .map(|(k, _)| k.clone())
+            .collect();
+        for k in keys { guard.pop(&k); }
+    }
+
+    pub async fn len(&self) -> usize {
+        self.inner.read().await.len()
     }
 }

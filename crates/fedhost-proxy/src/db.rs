@@ -8,27 +8,49 @@
 //!
 //! Both are cached in-process (and optionally in Redis). Database hits only
 //! occur on cache misses or TTL expiry.
+//!
+//! ## Pool sizing
+//!
+//! Normal mode: max 10 connections (proxy is read-only; TypeScript owns the rest).
+//! LOW_RESOURCE: max 3 connections.
 
 use anyhow::Result;
-use deadpool_postgres::{Config as PgConfig, Pool, Runtime};
+use deadpool_postgres::{Config as PgConfig, Pool, Runtime, PoolConfig};
 use tokio_postgres::NoTls;
 
 use crate::cache::{CachedFile, CachedSite, SiteVisibility};
+use crate::config::Config;
+
+/// Max pool connections for the Rust proxy.
+/// TypeScript server uses up to 20; proxy is read-only so we cap lower.
+const POOL_MAX_NORMAL: usize = 10;
+const POOL_MAX_LOW_RESOURCE: usize = 3;
 
 pub struct Db {
     pool: Pool,
 }
 
 impl Db {
-    pub async fn new(database_url: &str) -> Result<Self> {
-        let mut cfg = PgConfig::new();
-        cfg.url = Some(database_url.to_string());
+    pub async fn new(cfg: &Config) -> Result<Self> {
+        let mut pg_cfg = PgConfig::new();
+        pg_cfg.url = Some(cfg.database_url.clone());
 
-        let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls)?;
+        // Pool sizing respects LOW_RESOURCE mode
+        let max_size = if cfg.low_resource { POOL_MAX_LOW_RESOURCE } else { POOL_MAX_NORMAL };
+        pg_cfg.pool = Some(PoolConfig {
+            max_size,
+            ..Default::default()
+        });
+
+        let pool = pg_cfg.create_pool(Some(Runtime::Tokio1), NoTls)?;
 
         // Verify connectivity at startup
-        let _conn = pool.get().await?;
+        {
+            let conn = pool.get().await?;
+            conn.execute("SELECT 1", &[]).await?;
+        }
 
+        tracing::info!(max_size, low_resource = cfg.low_resource, "DB pool ready");
         Ok(Self { pool })
     }
 

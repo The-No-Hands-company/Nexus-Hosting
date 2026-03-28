@@ -88,6 +88,7 @@ mod config;
 mod db;
 mod geo;
 mod handler;
+mod invalidation;
 mod metrics;
 mod storage;
 
@@ -111,11 +112,21 @@ async fn main() -> Result<()> {
     let cfg = config::Config::from_env()?;
     info!(version = env!("CARGO_PKG_VERSION"), addr = %cfg.listen_addr, "fedhost-proxy starting");
 
+    // Install Prometheus metrics recorder (must be before any metrics calls)
+    let metrics_handle = metrics::install_recorder();
+
     // Shared application state
     let state = handler::AppState::new(&cfg).await?;
 
     // Verify storage is reachable before accepting traffic
     state.storage.health_check().await?;
+
+    // Spawn Redis cache invalidation subscriber (no-op if REDIS_URL is empty)
+    invalidation::spawn_invalidation_subscriber(
+        cfg.redis_url.clone(),
+        state.domain_cache.clone(),
+        state.file_cache.clone(),
+    );
 
     // Build the router
     let app = Router::new()

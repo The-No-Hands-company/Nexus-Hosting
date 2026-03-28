@@ -40,7 +40,7 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(cfg: &Config) -> anyhow::Result<Self> {
-        let db = Db::new(&cfg.database_url).await?;
+        let db = Db::new(cfg).await?;
         let storage = ObjectStorage::new(cfg)?;
 
         Ok(Self {
@@ -120,13 +120,31 @@ pub async fn serve_site(
     let content_type = file.content_type.clone();
     let cache_control = get_cache_control(&content_type);
 
-    let stream_result = state.storage.stream_object(&file.object_path).await;
+    // For small files (< 2 MB) buffer into memory — avoids async overhead.
+    // For large files stream directly from S3 to avoid holding heap memory.
+    const LARGE_FILE_THRESHOLD: i64 = 2 * 1024 * 1024; // 2 MB
 
-    let body_bytes = match stream_result {
-        Ok(b) => b,
-        Err(e) => {
-            warn!(error = %e, domain, path = file_path, "Storage error");
-            return StatusCode::BAD_GATEWAY.into_response();
+    let body = if file.size_bytes > LARGE_FILE_THRESHOLD {
+        match state.storage.stream_object_body(&file.object_path).await {
+            Ok((_len, byte_stream)) => {
+                // Convert aws ByteStream into a tokio-compatible async read,
+                // then into an axum streaming Body
+                use tokio_util::io::ReaderStream;
+                let reader = byte_stream.into_async_read();
+                Body::from_stream(ReaderStream::new(reader))
+            }
+            Err(e) => {
+                warn!(error = %e, domain, path = file_path, "Storage stream error");
+                return StatusCode::BAD_GATEWAY.into_response();
+            }
+        }
+    } else {
+        match state.storage.stream_object(&file.object_path).await {
+            Ok(bytes) => Body::from(bytes),
+            Err(e) => {
+                warn!(error = %e, domain, path = file_path, "Storage error");
+                return StatusCode::BAD_GATEWAY.into_response();
+            }
         }
     };
 
@@ -145,13 +163,19 @@ pub async fn serve_site(
     }
 
     // ── Build response ─────────────────────────────────────────────────────
-    Response::builder()
+    let mut builder = Response::builder()
         .status(StatusCode::OK)
-        .header("Content-Type",     content_type)
-        .header("Cache-Control",    cache_control)
-        .header("X-Served-By",      "fedhost-proxy/rust")
-        .header("X-Site-Domain",    domain)
-        .body(Body::from(body_bytes))
+        .header("Content-Type",  content_type)
+        .header("Cache-Control", cache_control)
+        .header("X-Served-By",   "fedhost-proxy/rust")
+        .header("X-Site-Domain", domain);
+
+    // Set Content-Length for buffered responses (helps clients progress-bar)
+    if file.size_bytes <= 2 * 1024 * 1024 {
+        builder = builder.header("Content-Length", file.size_bytes.to_string());
+    }
+
+    builder.body(body)
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
