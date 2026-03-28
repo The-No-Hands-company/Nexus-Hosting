@@ -71,18 +71,20 @@ Both the Rust proxy and TypeScript server talk to the **same** PostgreSQL and S3
 - HMAC cookie verification (exact port of TypeScript `verifyUnlockCookie`)
 - Geo routing helpers (country→region, fly.io region codes)
 - 404/403/password-gate responses
+- **`storage.rs` → `ObjectStorage` fully implemented** ✅
+  - `new()`: aws_sdk_s3::Client with custom endpoint + force_path_style for MinIO/R2
+  - `stream_object()`: buffer bytes (static assets)
+  - `stream_object_body()`: raw ByteStream for large-file streaming
+  - `health_check()`: startup bucket verification
+  - `presigned_url()`: time-limited S3 GET URLs
 
-### 🔨 TODO — in implementation order
+### 🔨 TODO — in implementation order (8 remaining)
 
-1. **`storage.rs` → `ObjectStorage::new()`**
-   Construct `aws_sdk_s3::Client` from config. See [aws-sdk-s3 docs](https://docs.rs/aws-sdk-s3).
-   Reference: TypeScript `S3StorageProvider` in `artifacts/api-server/src/lib/storageProvider.ts`.
+1. **`handler.rs` → use `stream_object_body()` for large files**
+   For files > ~1 MB, pipe `ByteStream` directly into axum `Body` to avoid
+   buffering the entire object in memory.
 
-2. **`storage.rs` → streaming response body**
-   Replace `collect()` + `Bytes` with `StreamBody` for large files.
-   Use `GetObjectOutput::body` as an `axum::body::Body`.
-
-3. **`db.rs` → connection pool tuning**
+2. **`db.rs` → connection pool tuning**
    Wire `LOW_RESOURCE` config into pool max connections.
    Add prepared statement caching.
 

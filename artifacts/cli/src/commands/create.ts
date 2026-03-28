@@ -194,34 +194,119 @@ export default { kit: { adapter: adapter({ fallback: "404.html" }) } };`,
 };
 
 
-// ── Dynamic site scaffolds (--type nlpl|node|python) ─────────────────────────
+// Dynamic site scaffolds (--type nlpl|node|python)
+
+const NLPL_MAIN = [
+  "import network",
+  "import io",
+  "",
+  "// FedHost injects PORT via environment.",
+  "// Your server MUST call network.serve_http to handle requests.",
+  "",
+  "function handle_request with request returns String",
+  '  set path to network.get_path from request',
+  '  if path equals "/"',
+  '    set body to "<!DOCTYPE html><html><head><title>My NLPL App</title></head><body><h1>Hello from NLPL!</h1></body></html>"',
+  '    return "HTTP/1.1 200 OK\\r\\nContent-Type: text/html\\r\\n\\r\\n" + body',
+  "  end",
+  '  if path equals "/api/health"',
+  '    return "HTTP/1.1 200 OK\\r\\nContent-Type: application/json\\r\\n\\r\\n{\\"ok\\":true}"',
+  "  end",
+  '  return "HTTP/1.1 404 Not Found\\r\\nContent-Type: text/plain\\r\\n\\r\\nNot found"',
+  "end",
+  "",
+  "call network.serve_http with handle_request, PORT",
+].join("\n");
+
+const NODE_MAIN = [
+  "const http = require('http');",
+  "const url  = require('url');",
+  "const PORT        = parseInt(process.env.PORT ?? '3000', 10);",
+  "const SITE_DOMAIN = process.env.SITE_DOMAIN ?? 'localhost';",
+  "",
+  "function router(req, res) {",
+  "  const { pathname } = url.parse(req.url ?? '/');",
+  "  if (pathname === '/' || pathname === '') {",
+  "    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });",
+  "    res.end(`<!DOCTYPE html><html><head><title>My App</title></head><body><h1>Hello from Node.js!</h1><p>Domain: ${SITE_DOMAIN}</p></body></html>`);",
+  "    return;",
+  "  }",
+  "  if (pathname === '/api/health') {",
+  "    res.writeHead(200, { 'Content-Type': 'application/json' });",
+  "    res.end(JSON.stringify({ ok: true, uptime: process.uptime() }));",
+  "    return;",
+  "  }",
+  "  res.writeHead(404, { 'Content-Type': 'text/plain' });",
+  "  res.end('Not found');",
+  "}",
+  "",
+  "const server = http.createServer(router);",
+  "server.listen(PORT, '0.0.0.0', () => console.log(`[server] Listening on port ${PORT}`));",
+  "process.on('SIGTERM', () => { server.close(() => process.exit(0)); setTimeout(() => process.exit(1), 4900).unref(); });",
+].join("\n");
+
+const NODE_PKG = JSON.stringify({
+  name: "my-fedhost-node-app",
+  version: "0.1.0",
+  main: "server.js",
+  scripts: { start: "node server.js", dev: "PORT=3000 node server.js" },
+  engines: { node: ">=18" },
+}, null, 2);
+
+const PY_MAIN = [
+  '"""FedHost Python HTTP server scaffold. Uses stdlib only."""',
+  "import os, json, signal, http.server, urllib.parse",
+  "PORT        = int(os.environ.get('PORT', '3000'))",
+  "SITE_DOMAIN = os.environ.get('SITE_DOMAIN', 'localhost')",
+  "class Handler(http.server.BaseHTTPRequestHandler):",
+  "  def do_GET(self):",
+  "    p = urllib.parse.urlparse(self.path).path",
+  "    if p in ('/', ''):",
+  "      b = f'<h1>Hello from Python!</h1><p>{SITE_DOMAIN}</p>'.encode()",
+  "      self.send_response(200); self.send_header('Content-Type','text/html'); self.end_headers(); self.wfile.write(b)",
+  "    elif p == '/api/health':",
+  "      b = json.dumps({'ok': True}).encode()",
+  "      self.send_response(200); self.send_header('Content-Type','application/json'); self.end_headers(); self.wfile.write(b)",
+  "    else:",
+  "      self.send_response(404); self.send_header('Content-Type','text/plain'); self.end_headers(); self.wfile.write(b'Not found')",
+  "  def log_message(self, fmt, *a): print(f'[server] {fmt % a}')",
+  "def main():",
+  "  srv = http.server.HTTPServer(('0.0.0.0', PORT), Handler)",
+  "  print(f'[server] Listening on port {PORT}')",
+  "  signal.signal(signal.SIGTERM, lambda *_: srv.shutdown())",
+  "  srv.serve_forever()",
+  "if __name__ == '__main__': main()",
+].join("\n");
+
 const DYNAMIC_SCAFFOLDS: Record<string, { label: string; desc: string; entryFile: string; files: Record<string, string> }> = {
   nlpl: {
     label: "NLPL Application", entryFile: "server.nlpl",
     desc:  "NLPL HTTP server — requires NLPL interpreter on the node.",
     files: {
-      "server.nlpl": `import network\nimport io\n\n// FedHost passes PORT via environment\n\nfunction handle_request with request returns String\n  set path to network.get_path from request\n  if path equals "/"\n    return "HTTP/1.1 200 OK\\r\\nContent-Type: text/html\\r\\n\\r\\n<!DOCTYPE html><html><body><h1>Hello from NLPL!</h1></body></html>"\n  end\n  return "HTTP/1.1 404 Not Found\\r\\nContent-Type: text/plain\\r\\n\\r\\nNot found"\nend\n\ncall network.serve_http with handle_request, PORT\n`,
-      "README.md": "# NLPL App\n\nDeploy: `fh deploy . --site <id>`\nThen start the process from the FedHost dashboard.",
+      "server.nlpl": NLPL_MAIN,
+      "README.md": "# NLPL App\n\nDeploy: `fh deploy . --site <id>`\nStart the process from the FedHost dashboard.\n\nLocal dev: `PORT=3000 python3 /opt/nlpl/src/main.py server.nlpl`\n",
     },
   },
   node: {
     label: "Node.js Server", entryFile: "server.js",
     desc:  "Node.js HTTP server — listens on PORT env var.",
     files: {
-      "server.js": `const http = require("http");\nconst PORT = parseInt(process.env.PORT ?? "3000", 10);\nhttp.createServer((req, res) => {\n  res.writeHead(200, { "Content-Type": "text/html" });\n  res.end("<h1>Hello from Node.js!</h1>");\n}).listen(PORT, "0.0.0.0", () => console.log(\`Listening on \${PORT}\`));\n`,
-      "package.json": `{\n  "name": "my-fedhost-app",\n  "version": "0.1.0",\n  "engines": { "node": ">=18" }\n}\n`,
-      "README.md": "# Node.js App\n\nDeploy: `fh deploy . --site <id>`\nThen start the process from the FedHost dashboard.",
+      "server.js":    NODE_MAIN,
+      "package.json": NODE_PKG,
+      "README.md": "# Node.js App\n\nDeploy: `fh deploy . --site <id>`\nStart the process from the FedHost dashboard.\n\nLocal dev: `PORT=3000 node server.js`\n",
     },
   },
   python: {
     label: "Python HTTP Server", entryFile: "server.py",
-    desc:  "Python 3 HTTP server — listens on PORT env var.",
+    desc:  "Python 3 HTTP server — stdlib only, no pip required.",
     files: {
-      "server.py": `import os, http.server, urllib.parse\nPORT = int(os.environ.get("PORT", "3000"))\nclass H(http.server.BaseHTTPRequestHandler):\n  def do_GET(self):\n    self.send_response(200); self.send_header("Content-Type","text/html"); self.end_headers()\n    self.wfile.write(b"<h1>Hello from Python!</h1>")\nhttp.server.HTTPServer(("0.0.0.0", PORT), H).serve_forever()\n`,
-      "README.md": "# Python App\n\nDeploy: `fh deploy . --site <id>`\nThen start the process from the FedHost dashboard.",
+      "server.py": PY_MAIN,
+      "README.md": "# Python App\n\nDeploy: `fh deploy . --site <id>`\nStart the process from the FedHost dashboard.\n\nLocal dev: `PORT=3000 python3 server.py`\n",
     },
   },
 };
+
+
 
 export const createCommand = new Command("create")
   .description("Scaffold a new site project from a template")

@@ -114,6 +114,9 @@ async fn main() -> Result<()> {
     // Shared application state
     let state = handler::AppState::new(&cfg).await?;
 
+    // Verify storage is reachable before accepting traffic
+    state.storage.health_check().await?;
+
     // Build the router
     let app = Router::new()
         .fallback(handler::serve_site)
