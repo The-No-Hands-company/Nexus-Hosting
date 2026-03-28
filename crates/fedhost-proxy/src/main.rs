@@ -92,7 +92,7 @@ mod metrics;
 mod storage;
 
 use anyhow::Result;
-use axum::{Router, middleware};
+use axum::Router;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tracing::info;

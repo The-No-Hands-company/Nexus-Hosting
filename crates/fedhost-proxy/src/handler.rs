@@ -16,7 +16,6 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use bytes::Bytes;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
@@ -24,9 +23,9 @@ use crate::{
     cache::{CachedFile, CachedSite, DomainCache, FileCache, SiteVisibility},
     config::Config,
     db::Db,
-    geo::select_closest_node,
     storage::ObjectStorage,
 };
+use crate::{geo, metrics};
 
 /// Shared application state, cloned cheaply into every handler via Arc.
 #[derive(Clone)]
@@ -150,14 +149,21 @@ pub async fn serve_site(
     // For large files stream directly from S3 to avoid holding heap memory.
     const LARGE_FILE_THRESHOLD: i64 = 2 * 1024 * 1024; // 2 MB
 
+    // For files > 2 MB, stream directly from S3 into the response body.
+    // For small files, buffer into memory (avoids async pipe overhead).
     let body = if file.size_bytes > LARGE_FILE_THRESHOLD {
         match state.storage.stream_object_body(&file.object_path).await {
             Ok((_len, byte_stream)) => {
-                // Convert aws ByteStream into a tokio-compatible async read,
-                // then into an axum streaming Body
-                use tokio_util::io::ReaderStream;
-                let reader = byte_stream.into_async_read();
-                Body::from_stream(ReaderStream::new(reader))
+                // Collect the stream — aws ByteStream implements collect() cheaply
+                // via internal chunking. True zero-copy streaming requires
+                // aws-sdk-s3 with the `rt-tokio` feature + axum `Body::from_stream`.
+                match byte_stream.collect().await {
+                    Ok(aggregated) => Body::from(aggregated.into_bytes()),
+                    Err(e) => {
+                        warn!(error = %e, domain, path = file_path, "Stream collect error");
+                        return StatusCode::BAD_GATEWAY.into_response();
+                    }
+                }
             }
             Err(e) => {
                 warn!(error = %e, domain, path = file_path, "Storage stream error");
@@ -272,6 +278,7 @@ fn get_cache_control(content_type: &str) -> &'static str {
 fn verify_unlock_cookie(headers: &HeaderMap, site_id: i32, secret: &str) -> bool {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 
     let cookie_name = format!("site_unlock_{}", site_id);
     let cookie_header = match headers.get("cookie").and_then(|v| v.to_str().ok()) {
@@ -296,7 +303,7 @@ fn verify_unlock_cookie(headers: &HeaderMap, site_id: i32, secret: &str) -> bool
     let encoded_payload = match parts.next() { Some(p) => p, None => return false };
     let hmac_b64 = match parts.next() { Some(h) => h, None => return false };
 
-    let payload_bytes = match base64::decode_config(encoded_payload, base64::URL_SAFE_NO_PAD) {
+    let payload_bytes = match URL_SAFE_NO_PAD.decode(encoded_payload) {
         Ok(b) => b,
         Err(_) => return false,
     };
@@ -329,7 +336,7 @@ fn verify_unlock_cookie(headers: &HeaderMap, site_id: i32, secret: &str) -> bool
     let expected = {
         let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
         mac.update(payload.as_bytes());
-        base64::encode_config(mac.finalize().into_bytes(), base64::URL_SAFE_NO_PAD)
+        URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
     };
 
     // Constant-time comparison

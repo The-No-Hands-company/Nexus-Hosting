@@ -8,8 +8,7 @@ use axum::{Router, routing::get, response::IntoResponse, http::StatusCode};
 use metrics::{counter, histogram, gauge};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use std::net::SocketAddr;
-use std::time::{Duration, Instant};
-use tower_http::trace::TraceLayer;
+use std::time::Duration;
 
 /// Install the Prometheus recorder globally and return the scrape handle.
 ///
@@ -20,14 +19,10 @@ pub fn install_recorder() -> PrometheusHandle {
         .expect("Failed to install Prometheus recorder")
 }
 
-/// axum `tower::Layer` that records HTTP request count and latency.
-pub fn metrics_layer() -> impl tower::Layer<tower::util::BoxCloneService<
-    axum::extract::Request, axum::response::Response, std::convert::Infallible
->> + Clone {
+/// Returns an identity layer — metrics are recorded inline in serve_site().
+/// The tower layer approach requires boxing which adds overhead on the hot path.
+pub fn metrics_layer() -> tower::layer::util::Identity {
     tower::layer::util::Identity::new()
-    // Note: full request instrumentation is done inline in serve_site()
-    // via record_request_metrics() — the layer approach requires boxing
-    // which adds overhead on the hot path. Inline is cleaner here.
 }
 
 /// Record a completed request — called from serve_site() after response is built.

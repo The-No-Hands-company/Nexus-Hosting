@@ -12,6 +12,7 @@
 //! on TTL expiry (5 minutes).
 
 use std::sync::Arc;
+use futures_util::StreamExt;
 use tracing::{info, warn, error};
 
 use crate::cache::{DomainCache, FileCache};
@@ -54,8 +55,7 @@ async fn run_subscriber(
     file_cache:   &Arc<FileCache>,
 ) -> anyhow::Result<()> {
     let client = redis::Client::open(redis_url)?;
-    let mut conn = client.get_async_connection().await?;
-    let mut pubsub = conn.into_pubsub();
+    let mut pubsub = client.get_async_pubsub().await?;
     pubsub.subscribe(CHANNEL).await?;
 
     info!(channel = CHANNEL, "Redis cache invalidation subscriber connected");
@@ -63,7 +63,6 @@ async fn run_subscriber(
     let mut stream = pubsub.into_on_message();
 
     while let Some(msg) = {
-        use futures_util::StreamExt;
         stream.next().await
     } {
         let payload: String = match msg.get_payload() {
