@@ -35,6 +35,7 @@ import { startWebhookRetryProcessor, stopWebhookRetryProcessor } from "./lib/web
 import { startRetentionJob, stopRetentionJob } from "./lib/retentionCleanup";
 import { startEmailQueue, stopEmailQueue } from "./lib/email";
 import { startOrphanCleanup, stopOrphanCleanup } from "./lib/orphanCleanup";
+import { runBootstrapSeed } from "./lib/bootstrapSeed";
 import { db, sessionsTable } from "@workspace/db";
 import { lt } from "drizzle-orm";
 import { seedBundledSites } from "./lib/seedBundledSites";
@@ -140,6 +141,11 @@ ensureLocalNode()
     startRetentionJob();
     startEmailQueue();
     startOrphanCleanup();
+
+    // Seed federation peers from BOOTSTRAP_URLS (once, non-blocking)
+    runBootstrapSeed().catch(err =>
+      logger.warn({ err: err.message }, "[bootstrap] Seed failed — continuing without initial peers")
+    );
 
     // Initialise Redis connection (optional — falls back to in-memory if not configured)
     const redis = getRedisClient();

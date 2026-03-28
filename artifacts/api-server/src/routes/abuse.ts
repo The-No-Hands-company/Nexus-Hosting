@@ -188,7 +188,8 @@ router.post("/ip-bans", requireAdmin, asyncHandler(async (req: Request, res: Res
     expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
   }).returning();
 
-  invalidateBanCache(parsed.data.ipAddress);
+  // If a CIDR range is specified, flush the full cache (any IP could be affected)
+  invalidateBanCache(parsed.data.cidrRange ? undefined : parsed.data.ipAddress);
 
   await db.insert(adminAuditLogTable).values({
     adminId: (req as any).user?.id,

@@ -11,6 +11,7 @@ import { invalidateSiteCache } from "../lib/domainCache";
 import { enqueueSyncRetry } from "../lib/syncRetryQueue";
 import { emailDeploySuccess, emailDeployFailed } from "../lib/email";
 import { deploymentsTotal, storageOperationsTotal } from "../lib/metrics";
+import { scanDeployment } from "../lib/contentScanner.js";
 import {
   GetSiteFileUploadUrlBody,
   RegisterSiteFileBody,
@@ -122,6 +123,36 @@ router.post("/sites/:id/deploy", deployLimiter, requireScope("deploy"), asyncHan
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
 
+  // ── Email verification grace period enforcement ────────────────────────────
+  // 7-day grace: unverified users get a warning header but can still deploy.
+  // 30-day hard block: unverified users are blocked until they verify.
+  // This only applies to human sessions — API token deploys skip this check.
+  if (req.isAuthenticated() && req.user?.id && !(req as any).isBearerToken) {
+    const [userRecord] = await db
+      .select({ emailVerified: usersTable.emailVerified, createdAt: usersTable.createdAt, isAdmin: usersTable.isAdmin })
+      .from(usersTable)
+      .where(eq(usersTable.id, req.user.id))
+      .limit(1);
+
+    if (userRecord && !userRecord.isAdmin && !userRecord.emailVerified) {
+      const accountAgeMs = Date.now() - new Date(userRecord.createdAt).getTime();
+      const accountAgeDays = accountAgeMs / (1000 * 60 * 60 * 24);
+
+      if (accountAgeDays > 30) {
+        throw AppError.forbidden(
+          "Please verify your email address before deploying. Check your inbox for a verification link or visit your dashboard to resend it.",
+          "EMAIL_VERIFICATION_REQUIRED",
+        );
+      }
+
+      if (accountAgeDays > 7) {
+        // Warn but allow through
+        res.setHeader("X-Email-Verification-Warning",
+          `Your email is unverified. You have ${Math.floor(30 - accountAgeDays)} days before deploys are blocked.`);
+      }
+    }
+  }
+
   const [site] = await db.select().from(sitesTable).where(eq(sitesTable.id, siteId));
   if (!site) throw AppError.notFound("Site not found");
 
@@ -198,6 +229,29 @@ router.post("/sites/:id/deploy", deployLimiter, requireScope("deploy"), asyncHan
         );
       }
     }
+  }
+
+  // ── Content scan (optional — only runs if CONTENT_SCAN_WEBHOOK_URL is set) ──
+  const scanResult = await scanDeployment({
+    deploymentId: 0, // placeholder — actual ID assigned in transaction below
+    siteId,
+    siteDomain: site.domain,
+    fileCount:  pendingFiles.length,
+    totalSizeMb,
+    files: pendingFiles.map(f => ({
+      path:        f.filePath,
+      contentType: f.contentType,
+      sizeBytes:   f.sizeBytes,
+      objectPath:  f.objectPath,
+    })),
+  });
+
+  if (!scanResult.safe) {
+    throw AppError.badRequest(
+      `Deployment blocked by content scanner: ${scanResult.reason ?? "content policy violation"}. ` +
+      `If you believe this is a mistake, contact the node operator.`,
+      "CONTENT_SCAN_FAILED",
+    );
   }
 
   // Wrap entire deployment in a transaction for atomicity

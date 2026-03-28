@@ -3746,3 +3746,489 @@ components:
                   domain:  {type: string}
                   blocked: {type: boolean}
         '400': {description: domain query parameter missing}
+
+  # ── Email verification ────────────────────────────────────────────────────────
+
+  /api/auth/verify-email:
+    get:
+      summary: Consume an email verification token
+      description: |
+        Called via the link in the verification email.
+        On success, sets emailVerified=1 on the user and redirects to /dashboard?email_verified=1.
+        On failure, redirects to /?error=invalid_or_expired_token.
+      tags: [Auth]
+      parameters:
+        - {name: token, in: query, required: true, schema: {type: string}}
+      responses:
+        '302': {description: Redirect on success or failure}
+
+  /api/auth/resend-verification:
+    post:
+      summary: Re-send email verification link
+      description: Rate-limited. Requires authentication. No-op if already verified.
+      tags: [Auth]
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:      {type: boolean}
+                  message: {type: string}
+        '401': {description: Not authenticated}
+
+  # ── Abuse reports ─────────────────────────────────────────────────────────────
+
+  /api/abuse/report:
+    post:
+      summary: Submit an abuse report for a site
+      description: |
+        Public endpoint — no authentication required.
+        Rate-limited to prevent spam.
+      tags: [Abuse]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [siteDomain, reason]
+              properties:
+                siteDomain:    {type: string, description: Primary domain of the site being reported}
+                reason:
+                  type: string
+                  enum: [spam, phishing, malware, csam, copyright, harassment, illegal_content, other]
+                description:   {type: string, maxLength: 2000}
+                evidenceUrl:   {type: string, format: uri}
+                reporterEmail: {type: string, format: email}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:      {type: boolean}
+                  message: {type: string}
+        '404': {description: Site not found}
+
+  /api/abuse/reports:
+    get:
+      summary: List abuse reports (admin only)
+      tags: [Abuse, Admin]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [pending, under_review, resolved_removed, resolved_no_action, escalated]}}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AbuseReport'}
+
+  /api/abuse/reports/{id}:
+    patch:
+      summary: Update abuse report status (admin only)
+      tags: [Abuse, Admin]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [pending, under_review, resolved_removed, resolved_no_action, escalated]
+                reviewNotes: {type: string, maxLength: 2000}
+      responses:
+        '200': {description: Updated report}
+        '404': {description: Report not found}
+
+  /api/abuse/reports/{id}/takedown:
+    post:
+      summary: Take down a site and resolve report (admin only)
+      description: Suspends the site and marks report as resolved_removed.
+      tags: [Abuse, Admin]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:      {type: boolean}
+                  message: {type: string}
+
+  # ── IP bans ───────────────────────────────────────────────────────────────────
+
+  /api/admin/ip-bans:
+    get:
+      summary: List active IP bans (admin only)
+      tags: [Admin]
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/IpBan'}}
+    post:
+      summary: Create an IP ban (admin only)
+      tags: [Admin]
+      security: [{cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ipAddress]
+              properties:
+                ipAddress: {type: string, description: IPv4 address}
+                cidrRange: {type: string, description: CIDR range e.g. 1.2.3.0/24}
+                reason:    {type: string, maxLength: 500}
+                scope:     {type: string, enum: [api, sites, all], default: all}
+                expiresAt: {type: string, format: date-time, description: Null for permanent ban}
+      responses:
+        '201': {description: Ban created}
+
+  /api/admin/ip-bans/{id}:
+    delete:
+      summary: Remove an IP ban (admin only)
+      tags: [Admin]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Ban removed}
+        '404': {description: Ban not found}
+
+  # ── Node trust ────────────────────────────────────────────────────────────────
+
+  /api/admin/node-trust:
+    get:
+      summary: List federation node trust scores (admin only)
+      tags: [Admin, Federation]
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/NodeTrust'}}
+
+
+    # ── New schemas ───────────────────────────────────────────────────────────
+
+    AbuseReport:
+      type: object
+      properties:
+        id:            {type: integer}
+        siteId:        {type: integer}
+        siteDomain:    {type: string}
+        reporterEmail: {type: string}
+        reason:        {type: string}
+        description:   {type: string}
+        status:        {type: string, enum: [pending, under_review, resolved_removed, resolved_no_action, escalated]}
+        reviewedBy:    {type: string}
+        reviewedAt:    {type: string, format: date-time}
+        reviewNotes:   {type: string}
+        actionTaken:   {type: integer}
+        createdAt:     {type: string, format: date-time}
+
+    IpBan:
+      type: object
+      properties:
+        id:        {type: integer}
+        ipAddress: {type: string}
+        cidrRange: {type: string, nullable: true}
+        reason:    {type: string, nullable: true}
+        scope:     {type: string, enum: [api, sites, all]}
+        bannedBy:  {type: string, nullable: true}
+        expiresAt: {type: string, format: date-time, nullable: true}
+        createdAt: {type: string, format: date-time}
+
+    NodeTrust:
+      type: object
+      properties:
+        id:               {type: integer}
+        nodeDomain:       {type: string}
+        trustLevel:       {type: string, enum: [unverified, verified, trusted, blocked]}
+        successfulPings:  {type: integer}
+        failedPings:      {type: integer}
+        uptimePercent:    {type: integer}
+        firstSeenAt:      {type: string, format: date-time}
+        lastPingAt:       {type: string, format: date-time, nullable: true}
+        manuallyReviewed: {type: integer}
+        updatedAt:        {type: string, format: date-time}
+
+
+  # ── Email verification ────────────────────────────────────────────────────────
+
+  /api/auth/verify-email:
+    get:
+      summary: Consume an email verification token
+      description: Redirects to /dashboard?email_verified=1 on success, /?error=invalid_or_expired_token on failure.
+      tags: [Auth]
+      parameters:
+        - {name: token, in: query, required: true, schema: {type: string}}
+      responses:
+        '302': {description: Redirect}
+
+  /api/auth/resend-verification:
+    post:
+      summary: Re-send email verification link (authenticated)
+      tags: [Auth]
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  message: {type: string}
+
+  # ── Abuse reports ─────────────────────────────────────────────────────────────
+
+  /api/abuse/report:
+    post:
+      summary: Submit an abuse report (public, rate-limited)
+      tags: [Abuse]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AbuseReportBody'
+      responses:
+        '201': {description: Report received}
+        '404': {description: Site not found}
+
+  /api/abuse/reports:
+    get:
+      summary: List abuse reports (admin only)
+      tags: [Abuse, Admin]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: status, in: query, schema: {type: string}}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/AbuseReport'}}
+
+  /api/abuse/reports/{id}:
+    patch:
+      summary: Update abuse report status (admin only)
+      tags: [Abuse, Admin]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: {type: string, enum: [pending, under_review, resolved_removed, resolved_no_action, escalated]}
+                reviewNotes: {type: string}
+      responses:
+        '200': {description: Updated}
+
+  /api/abuse/reports/{id}/takedown:
+    post:
+      summary: Suspend site and resolve report (admin only)
+      tags: [Abuse, Admin]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Site suspended}
+
+  # ── IP bans ───────────────────────────────────────────────────────────────────
+
+  /api/admin/ip-bans:
+    get:
+      summary: List active IP bans (admin only)
+      tags: [Admin]
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/IpBan'}}
+    post:
+      summary: Create an IP ban (admin only)
+      tags: [Admin]
+      security: [{cookieAuth: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ipAddress]
+              properties:
+                ipAddress: {type: string}
+                cidrRange: {type: string}
+                reason: {type: string}
+                scope: {type: string, enum: [api, sites, all]}
+                expiresAt: {type: string, format: date-time}
+      responses:
+        '201': {description: Ban created}
+
+  /api/admin/ip-bans/{id}:
+    delete:
+      summary: Remove an IP ban (admin only)
+      tags: [Admin]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Removed}
+
+    AbuseReportBody:
+      type: object
+      required: [siteDomain, reason]
+      properties:
+        siteDomain: {type: string}
+        reason: {type: string, enum: [spam, phishing, malware, csam, copyright, harassment, illegal_content, other]}
+        description: {type: string, maxLength: 2000}
+        evidenceUrl: {type: string, format: uri}
+        reporterEmail: {type: string, format: email}
+
+    AbuseReport:
+      type: object
+      properties:
+        id: {type: integer}
+        siteId: {type: integer}
+        siteDomain: {type: string}
+        reason: {type: string}
+        status: {type: string, enum: [pending, under_review, resolved_removed, resolved_no_action, escalated]}
+        reviewNotes: {type: string, nullable: true}
+        actionTaken: {type: integer}
+        createdAt: {type: string, format: date-time}
+
+    IpBan:
+      type: object
+      properties:
+        id: {type: integer}
+        ipAddress: {type: string}
+        cidrRange: {type: string, nullable: true}
+        reason: {type: string, nullable: true}
+        scope: {type: string, enum: [api, sites, all]}
+        expiresAt: {type: string, format: date-time, nullable: true}
+        createdAt: {type: string, format: date-time}
+
+    NodeTrust:
+      type: object
+      properties:
+        id: {type: integer}
+        nodeDomain: {type: string}
+        trustLevel: {type: string, enum: [unverified, verified, trusted, blocked]}
+        successfulPings: {type: integer}
+        failedPings: {type: integer}
+        uptimePercent: {type: integer}
+        firstSeenAt: {type: string, format: date-time}
+        lastPingAt: {type: string, format: date-time, nullable: true}
+        updatedAt: {type: string, format: date-time}
+
+  /api/admin/node-trust:
+    get:
+      summary: List federation node trust scores (admin only)
+      tags: [Admin, Federation]
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/NodeTrust'}}
+
+  /api/admin/node-trust/{domain}:
+    patch:
+      summary: Manually set a node's trust level (admin only)
+      tags: [Admin, Federation]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: domain, in: path, required: true, schema: {type: string}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                trustLevel: {type: string, enum: [unverified, verified, trusted, blocked]}
+                reviewNotes: {type: string}
+      responses:
+        '200': {description: Updated trust record}
+        '404': {description: Node trust record not found}
+
+  /api/admin/users/{id}/storage-cap:
+    patch:
+      summary: Set per-user storage cap (admin only)
+      description: |
+        Sets a per-user storage cap in MB. Use 0 to remove the cap (user is unlimited,
+        only node-level capacity applies). This is an operator administration tool —
+        NOT a pricing tier. FedHost is always free.
+      tags: [Admin]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [storageCapMb]
+              properties:
+                storageCapMb: {type: integer, minimum: 0, description: "0 = no cap"}
+      responses:
+        '200': {description: Cap updated}
+        '404': {description: User not found}
+
+  /api/admin/users/{id}/suspend:
+    patch:
+      summary: Suspend or reinstate a user (admin only)
+      tags: [Admin]
+      security: [{cookieAuth: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [suspended]
+              properties:
+                suspended: {type: boolean}
+      responses:
+        '200': {description: User suspended or reinstated}
+        '404': {description: User not found}

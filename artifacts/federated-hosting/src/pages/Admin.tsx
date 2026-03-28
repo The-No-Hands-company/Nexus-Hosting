@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LoadingState, ErrorState, StatusBadge } from "@/components/shared";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/components/ui/use-toast";
+import { formatDistanceToNow } from "date-fns";
 import {
   Server, Users, Globe, Activity, HardDrive, Cpu, MemoryStick,
   TrendingUp, Settings, LogIn, RefreshCw, Zap, Radio, Loader2,
   ClipboardList, HeartPulse, CheckCircle2, AlertTriangle, XCircle,
-  ExternalLink, ShieldAlert, Flag, Ban,
+  ExternalLink, ShieldAlert, Flag, Ban, MoreHorizontal,
 } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
@@ -503,7 +506,151 @@ function ModerationTab() {
           ) : <p className="text-muted-foreground text-sm">No active IP bans.</p>}
         </CardContent>
       </Card>
+
+      {/* Node Trust Scores */}
+      <NodeTrustPanel />
     </div>
+  );
+}
+
+function NodeTrustPanel() {
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const qc = useQueryClient();
+
+  const { data } = useQuery({
+    queryKey: ["node-trust"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/admin/node-trust`, { credentials: "include" });
+      return r.json() as Promise<{ data: any[] }>;
+    },
+  });
+
+  const setLevel = useMutation({
+    mutationFn: async ({ domain, level }: { domain: string; level: string }) => {
+      await fetch(`${BASE}/api/admin/node-trust/${encodeURIComponent(domain)}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trustLevel: level }),
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["node-trust"] }),
+  });
+
+  const LEVEL_COLORS: Record<string, string> = {
+    trusted:    "text-emerald-400 border-emerald-400/30 bg-emerald-400/10",
+    verified:   "text-blue-400 border-blue-400/30 bg-blue-400/10",
+    unverified: "text-muted-foreground border-white/10",
+    blocked:    "text-red-400 border-red-400/30 bg-red-400/10",
+  };
+
+  return (
+    <Card className="border-white/5">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-white text-base flex items-center gap-2">
+          <Radio className="w-4 h-4 text-primary" />Node Trust Scores
+        </CardTitle>
+        <CardDescription>Federation peers ranked by ping reliability. Nodes auto-promote to Trusted at 50 successful pings.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!data?.data?.length ? (
+          <p className="text-muted-foreground text-sm">No federation peers seen yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {data.data.map((n: any) => (
+              <div key={n.nodeDomain} className="flex items-center gap-3 px-3 py-2 bg-muted/10 border border-white/5 rounded-lg text-sm">
+                <span className="font-mono text-white flex-1 truncate">{n.nodeDomain}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs border ${LEVEL_COLORS[n.trustLevel] ?? ""}`}>{n.trustLevel}</span>
+                <span className="text-muted-foreground text-xs w-24 text-right">{n.successfulPings}✓ {n.failedPings}✗</span>
+                <select
+                  value={n.trustLevel}
+                  onChange={e => setLevel.mutate({ domain: n.nodeDomain, level: e.target.value })}
+                  className="bg-muted/20 border border-white/8 rounded px-1.5 py-1 text-xs text-white focus:outline-none"
+                >
+                  {["unverified","verified","trusted","blocked"].map(l => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function UserActionsMenu({ user }: { user: AdminUser }) {
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [capInput, setCapInput] = useState("");
+  const [capOpen, setCapOpen] = useState(false);
+
+  const suspend = useMutation({
+    mutationFn: async (suspended: boolean) => {
+      const r = await fetch(`${BASE}/api/admin/users/${user.id}/suspend`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suspended }),
+      });
+      if (!r.ok) throw new Error("Failed");
+    },
+    onSuccess: (_, s) => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      toast({ title: s ? "User suspended" : "User reinstated" });
+    },
+  });
+
+  const setCap = useMutation({
+    mutationFn: async (mb: number) => {
+      const r = await fetch(`${BASE}/api/admin/users/${user.id}/storage-cap`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageCapMb: mb }),
+      });
+      if (!r.ok) throw new Error("Failed");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      setCapOpen(false);
+      toast({ title: "Storage cap updated" });
+    },
+  });
+
+  const isSuspended = !!(user as any).suspendedAt;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-white">
+          <MoreHorizontal className="w-3.5 h-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52 bg-card border-white/10">
+        <DropdownMenuItem className="gap-2 cursor-pointer text-xs" onClick={() => setCapOpen(!capOpen)}>
+          <HardDrive className="w-3.5 h-3.5" />Set storage cap
+        </DropdownMenuItem>
+        {capOpen && (
+          <div className="px-3 py-2 flex gap-1">
+            <input
+              type="number" min="0" placeholder="MB (0=unlimited)"
+              value={capInput} onChange={e => setCapInput(e.target.value)}
+              className="flex-1 bg-muted/20 border border-white/8 rounded px-2 py-1 text-xs text-white focus:outline-none"
+            />
+            <Button size="sm" className="h-6 text-xs px-2"
+              onClick={() => setCap.mutate(parseInt(capInput || "0", 10))}
+              disabled={setCap.isPending}>Set</Button>
+          </div>
+        )}
+        <DropdownMenuSeparator className="bg-white/5" />
+        <DropdownMenuItem
+          className={`gap-2 cursor-pointer text-xs ${isSuspended ? "text-emerald-400" : "text-red-400"}`}
+          onClick={() => suspend.mutate(!isSuspended)}
+        >
+          {isSuspended ? <><CheckCircle2 className="w-3.5 h-3.5" />Reinstate user</> : <><XCircle className="w-3.5 h-3.5" />Suspend user</>}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -559,6 +706,7 @@ function AdminUsersTab() {
                 <p className="text-muted-foreground text-xs shrink-0 hidden md:block">
                   {formatDistanceToNow(new Date(u.createdAt), { addSuffix: true })}
                 </p>
+                <UserActionsMenu user={u} />
               </div>
             ))}
             {users.length === 0 && <p className="px-4 py-8 text-center text-muted-foreground text-sm">No users found.</p>}

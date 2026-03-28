@@ -106,37 +106,62 @@ pnpm run build
 
 ## Features
 
-### Phase 1 — Auth + File Serving
-- OIDC Auth (OpenID Connect + PKCE) — users own their sites
-- Presigned URL upload flow to object storage
-- Host-header site serving — `your-domain.com` routes to the right files
-- My Sites dashboard + drag-and-drop deploy UI
+### Hosting
+- **Deploy static sites** — drag-and-drop or `fh deploy` CLI — HTML, CSS, JS, images, fonts
+- **Git-powered builds** — connect a repo, push to deploy; build cache skips install on unchanged lockfiles
+- **Preview deployments** — non-main branches automatically get a `{branch}--{domain}` preview URL
+- **Rollback** — one click to revert to any previous deployment
+- **Deployment diff** — visual +/~/- file panel shows exactly what changed
+- **Dynamic sites** — NLPL, Node.js, and Python HTTP servers with process manager and port pool
+- **Custom domains** — CNAME + TXT verification, automatic TLS via ACME or Caddy
+- **SPA routing** — per-site toggle for index.html fallback vs strict 404
+- **Site visibility** — public / private / password-protected (HMAC-signed cookies)
 
-### Phase 2 — Federation Protocol
-- **Ed25519 key pairs** — each node has a cryptographic identity
-- **`/.well-known/federation`** discovery endpoint
+### Federation
+- **Ed25519 cryptographic identity** — each node has a verifiable key pair
+- **`/.well-known/federation`** discovery endpoint with capabilities declaration
 - **Signed handshakes** — nodes verify each other's identity before peering
-- **Federation event log** — persistent record of all handshakes, pings, syncs
-- Deploy → automatic replication to all active peers
+- **Node trust scoring** — unverified → verified → trusted (at 50 successful pings)
+- **Gossip peer discovery** — DB-backed, multi-instance safe
+- **Site sync** — deployments automatically replicated to all active peers (Ed25519 signed)
+- **Sync retry queue** — exponential backoff (30s → 2m → 10m → 1h → 6h), max 10 attempts
+- **Conflict resolution** — first-write-wins + public key tiebreaker
+- **Federation blocklist** — defederate nodes with full CRUD and gossip enforcement
+- **Bootstrap seeding** — `BOOTSTRAP_URLS` env var to discover initial peers on first start
+- **Replay attack protection** — 5-minute timestamp window on all signed federation messages
 
-### Phase 3 — Subdomain Routing + Replication
-- Host-header routing middleware — serves any registered site domain
-- Per-node capacity API — storage stats, site counts, bandwidth
-- Auto-initialises local node with Ed25519 keys on startup
-- Network-wide capacity overview
+### Security & Moderation
+- **Email verification** — SHA-256 tokens, 24h TTL, sent on login, dashboard resend banner
+- **IP banning** — exact IP and CIDR-range subnet bans, 60s cached, admin CRUD
+- **Abuse reports** — public report form (8 categories), admin review/takedown flow
+- **Content scanning hook** — configurable `CONTENT_SCAN_WEBHOOK_URL` for external scanner
+- **Admin RBAC** — `requireAdmin` middleware, `isAdmin` DB flag + `ADMIN_USER_IDS` env var
+- **Rate limiting** — 7 Redis-backed limiters; per-user, per-IP, per-endpoint
+- **HMAC-signed password gates** — `timingSafeEqual` verified, 5-attempt brute-force limit
+- **API tokens** — SHA-256 hashed, scoped (read/write/deploy), managed via dashboard + CLI
 
-### Phase 4 — Production Hardening
-- Helmet (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
-- Rate limiting — 200 req/min global; 20 req/min on auth/upload
-- Gzip compression
-- Structured pino logging with request IDs (X-Request-ID)
-- `AppError` class + `asyncHandler` — clean error propagation
-- Global error handler — structured JSON errors, no stack traces in prod
-- DB transactions on deploy — atomic, never partial
-- Database indexes on all hot query paths
-- Graceful shutdown — drains connections on SIGTERM/SIGINT
-- React `ErrorBoundary` — friendly fallback UI on crashes
-- Auto-retry with exponential backoff; no retries on 4xx
+### Operator Tools
+- **Admin dashboard** — users, all sites, audit log, health monitor, processes, moderation
+- **Per-user storage cap** — operator-set per-user limit (default: 0 = unlimited); not a paywall
+- **User suspension** — suspend abusive users without deleting data
+- **Prometheus metrics** — 13 metrics, `/metrics` endpoint, Grafana dashboards included
+- **Structured logging** — Pino, request IDs, private keys/passwords redacted
+- **Audit log** — every admin action recorded with actor, target, and detail
+- **Webhook notifications** — Ed25519 signed, delivery log, 5-attempt retry queue
+
+### CLI (`fh`)
+- `fh deploy` / `fh rollback` / `fh status`
+- `fh sites` / `fh domains` / `fh teams`
+- `fh env` / `fh forms` / `fh logs` / `fh watch`
+- `fh create --type` — static templates (HTML/React/Vue/Next/Svelte) + dynamic (nlpl/node/python)
+- `fh analytics` / `fh tokens`
+
+### Infrastructure
+- **Rust proxy** (`crates/fedhost-proxy`) — Brotli/gzip compression, LRU cache, Redis cache invalidation, S3 streaming, Prometheus metrics, geographic routing
+- **Docker Compose** — Redis + MinIO + Caddy + Rust proxy, all wired
+- **ACME/Let's Encrypt** — HTTP-01 + DNS-01, 12h renewal scheduler, expiry email notifications
+- **Geographic routing** — closest-node redirect based on request headers, 40+ country mappings
+- **Bahasa Indonesia i18n** — lazy-loaded, HTTP backend, Indonesia-first for SEA nodes
 
 ---
 

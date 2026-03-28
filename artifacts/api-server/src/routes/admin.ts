@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db, nodesTable, sitesTable, siteDeploymentsTable,
-  federationEventsTable, usersTable, siteAnalyticsTable,
+  federationEventsTable, usersTable, siteAnalyticsTable, nodeTrustTable,
 } from "@workspace/db";
 import { eq, count, sql, desc, gte, and } from "drizzle-orm";
 import { asyncHandler, AppError } from "../lib/errors";
@@ -218,6 +218,91 @@ router.get("/admin/audit-log", requireAdmin, asyncHandler(async (req: Request, r
 router.get("/admin/site-health", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) throw AppError.unauthorized();
   res.json(getSiteHealthSummary());
+}));
+
+/** GET /api/admin/node-trust — federation node trust scores */
+router.get("/admin/node-trust", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
+  const records = await db
+    .select()
+    .from(nodeTrustTable)
+    .orderBy(desc(nodeTrustTable.successfulPings))
+    .limit(200);
+
+  res.json({ data: records });
+}));
+
+/** PATCH /api/admin/node-trust/:domain — manually set trust level */
+router.patch("/admin/node-trust/:domain", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
+  const { domain } = req.params as { domain: string };
+  const { trustLevel, reviewNotes } = req.body as { trustLevel?: string; reviewNotes?: string };
+
+  const validLevels = ["unverified", "verified", "trusted", "blocked"];
+  if (trustLevel && !validLevels.includes(trustLevel)) {
+    throw AppError.badRequest(`trustLevel must be one of: ${validLevels.join(", ")}`);
+  }
+
+  const [updated] = await db
+    .update(nodeTrustTable)
+    .set({
+      trustLevel:       trustLevel as any ?? undefined,
+      reviewNotes:      reviewNotes ?? undefined,
+      manuallyReviewed: 1,
+      reviewedBy:       (req as any).user?.id,
+      updatedAt:        new Date(),
+    })
+    .where(eq(nodeTrustTable.nodeDomain, domain))
+    .returning();
+
+  if (!updated) throw AppError.notFound("Node trust record not found");
+  res.json(updated);
+}));
+
+/** PATCH /api/admin/users/:id/storage-cap — set per-user storage cap */
+router.patch("/admin/users/:id/storage-cap", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
+  const { id } = req.params as { id: string };
+  const { storageCapMb } = req.body as { storageCapMb?: number };
+
+  if (storageCapMb === undefined || typeof storageCapMb !== "number" || storageCapMb < 0) {
+    throw AppError.badRequest("storageCapMb must be a non-negative number (0 = no cap)");
+  }
+
+  const [updated] = await db
+    .update(usersTable)
+    .set({ storageCapMb })
+    .where(eq(usersTable.id, id))
+    .returning({ id: usersTable.id, email: usersTable.email, storageCapMb: usersTable.storageCapMb });
+
+  if (!updated) throw AppError.notFound("User not found");
+
+  res.json({
+    ...updated,
+    message: storageCapMb === 0
+      ? "Storage cap removed — user is unlimited (node capacity is the only limit)"
+      : `Storage cap set to ${storageCapMb}MB`,
+  });
+}));
+
+/** PATCH /api/admin/users/:id/suspend — suspend or reinstate a user */
+router.patch("/admin/users/:id/suspend", requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) throw AppError.unauthorized();
+
+  const { id } = req.params as { id: string };
+  const { suspended } = req.body as { suspended: boolean };
+
+  const [updated] = await db
+    .update(usersTable)
+    .set({ suspendedAt: suspended ? new Date() : null })
+    .where(eq(usersTable.id, id))
+    .returning({ id: usersTable.id, email: usersTable.email, suspendedAt: usersTable.suspendedAt });
+
+  if (!updated) throw AppError.notFound("User not found");
+  res.json({ ...updated, message: suspended ? "User suspended" : "User reinstated" });
 }));
 
 export default router;

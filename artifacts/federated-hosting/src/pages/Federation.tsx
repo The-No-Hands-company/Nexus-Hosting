@@ -40,6 +40,7 @@ interface Peer {
   publicKey: string | null;
   siteCount: number;
   uptimePercent: number;
+  trustLevel?: string | null;
 }
 
 interface FedEvent {
@@ -518,6 +519,20 @@ export default function Federation() {
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <span>Region: <span className="text-white/70">{peer.region}</span></span>
                       <span>Sites: <span className="text-white/70 font-mono">{peer.siteCount}</span></span>
+                      {peer.trustLevel && (
+                        <span className="col-span-2 flex items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                            peer.trustLevel === "trusted"    ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400" :
+                            peer.trustLevel === "verified"   ? "bg-blue-500/15 border-blue-500/30 text-blue-400" :
+                            peer.trustLevel === "blocked"    ? "bg-red-500/15 border-red-500/30 text-red-400" :
+                                                               "bg-white/5 border-white/10 text-muted-foreground"
+                          }`}>
+                            {peer.trustLevel === "trusted"  ? "✓ trusted" :
+                             peer.trustLevel === "verified" ? "● verified" :
+                             peer.trustLevel === "blocked"  ? "✕ blocked" : "○ unverified"}
+                          </span>
+                        </span>
+                      )}
                       <span className="col-span-2 flex items-center gap-1">
                         <Clock className="w-3 h-3 shrink-0" />
                         {peer.lastSeenAt

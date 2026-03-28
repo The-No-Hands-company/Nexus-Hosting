@@ -207,8 +207,11 @@ router.get("/federation/peers", asyncHandler(async (req, res) => {
       id: nodesTable.id, name: nodesTable.name, domain: nodesTable.domain,
       status: nodesTable.status, region: nodesTable.region, publicKey: nodesTable.publicKey,
       verifiedAt: nodesTable.verifiedAt, lastSeenAt: nodesTable.lastSeenAt,
+      siteCount: nodesTable.siteCount, uptimePercent: nodesTable.uptimePercent,
+      trustLevel: nodeTrustTable.trustLevel,
     })
     .from(nodesTable)
+    .leftJoin(nodeTrustTable, eq(nodeTrustTable.nodeDomain, nodesTable.domain))
     .where(eq(nodesTable.isLocalNode, 0))
     .orderBy(nodesTable.lastSeenAt)
     .limit(limit)
