@@ -1,32 +1,73 @@
-# Caddyfile
-# Reverse proxy for FedHost with automatic HTTPS.
+# Caddyfile for FedHost
 # Replace {$PUBLIC_DOMAIN} with your actual domain, or set the PUBLIC_DOMAIN env var.
+#
+# Architecture:
+#   {$PUBLIC_DOMAIN}/api/*    → TypeScript API server  (port 8080)
+#   {$PUBLIC_DOMAIN}/*        → Rust static proxy      (port 8090)
+#
+# The Rust proxy (fedhost-proxy) handles all site serving.
+# The TypeScript server handles auth, deploys, federation, admin.
+#
+# To run without the Rust proxy (TypeScript-only mode), comment out the
+# site-proxy block and uncomment the all-to-8080 block below.
 
 {$PUBLIC_DOMAIN} {
-    # Proxy all traffic to the FedHost app container
-    reverse_proxy app:8080
+    # ── TypeScript API server ─────────────────────────────────────────────
+    handle /api/* {
+        reverse_proxy app:8080
+    }
 
-    # Enable access logs in JSON format for log aggregation
+    # ACME challenge (Let's Encrypt HTTP-01) — TypeScript handles this
+    handle /.well-known/* {
+        reverse_proxy app:8080
+    }
+
+    # Dashboard SPA — TypeScript serves the built frontend
+    handle /dashboard/* {
+        reverse_proxy app:8080
+    }
+
+    # Auth callbacks
+    handle /callback* {
+        reverse_proxy app:8080
+    }
+
+    # ── Rust static site proxy ────────────────────────────────────────────
+    # All other traffic (site domains) goes to the Rust proxy.
+    # The Rust proxy reads the Host header to route to the right site.
+    handle {
+        reverse_proxy proxy:8090
+    }
+
+    # Compression — Rust proxy handles Brotli/gzip internally,
+    # but Caddy can compress the API responses
+    encode gzip
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+
     log {
         output stdout
         format json
     }
-
-    # Compress responses
-    encode gzip
-
-    # Security headers (supplement site-level headers from FedHost)
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        # Remove Server header to avoid fingerprinting
-        -Server
-    }
 }
 
-# Optional: redirect www to non-www
+# ── TypeScript-only mode (no Rust proxy) ─────────────────────────────────────
+# Uncomment this and comment out the above if you want to run without
+# the Rust proxy (lower performance, easier setup):
+#
+# {$PUBLIC_DOMAIN} {
+#     reverse_proxy app:8080
+#     encode gzip
+# }
+
+# ── Optional: www redirect ────────────────────────────────────────────────────
 # www.{$PUBLIC_DOMAIN} {
 #     redir https://{$PUBLIC_DOMAIN}{uri} permanent
 # }

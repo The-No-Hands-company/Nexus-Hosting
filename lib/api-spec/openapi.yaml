@@ -1681,9 +1681,13 @@ components:
           enum: [active, suspended, migrating]
         siteType:
           type: string
-          enum: [static, dynamic, blog, portfolio, other]
+          enum: [static, dynamic, blog, portfolio, other, nlpl]
         primaryNodeId:
           type: integer
+        spaRouting:
+          type: integer
+          enum: [0, 1]
+          description: "1 = serve index.html for unknown paths (SPA), 0 = strict 404 (MPA)"
 
     SiteFile:
       type: object

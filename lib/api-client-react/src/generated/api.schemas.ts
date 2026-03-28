@@ -174,6 +174,8 @@ export interface UpdateSiteBody {
   siteType?: UpdateSiteBodySiteType;
   primaryNodeId?: number;
   replicaCount?: number;
+  /** SPA routing: 1 = serve index.html for unknown paths, 0 = strict 404 */
+  spaRouting?: number;
 }
 
 export interface SiteFileUploadUrlBody {

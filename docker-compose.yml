@@ -179,6 +179,56 @@ services:
     networks:
       - fedhost
 
+  # ── Rust static site proxy ──────────────────────────────────────────────────
+  # Handles all site-serving traffic (Host-header routing → S3 streaming).
+  # Requires a pre-built binary at ./crates/fedhost-proxy/target/release/fedhost-proxy
+  # Build with: cd crates/fedhost-proxy && cargo build --release
+  #
+  # To run WITHOUT the Rust proxy (TypeScript-only), comment this service out
+  # and update the Caddyfile to route all traffic to app:8080.
+  proxy:
+    build:
+      context: crates/fedhost-proxy
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8090:8090"       # Site-serving port (Caddy routes site traffic here)
+      - "9091:9091"       # Prometheus metrics
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-fedhost}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-fedhost}
+
+      OBJECT_STORAGE_ENDPOINT:   http://minio:9000
+      OBJECT_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-fedhost}
+      OBJECT_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      OBJECT_STORAGE_BUCKET:     ${OBJECT_STORAGE_BUCKET:-fedhost-sites}
+      OBJECT_STORAGE_REGION:     auto
+
+      REDIS_URL:     redis://redis:6379
+      COOKIE_SECRET: ${COOKIE_SECRET}
+
+      PROXY_LISTEN_ADDR:   0.0.0.0:8090
+      METRICS_LISTEN_ADDR: 0.0.0.0:9091
+      PROXY_API_URL:       http://app:8080
+
+      NODE_REGION:          ${NODE_REGION:-self-hosted}
+      ENABLE_GEO_ROUTING:   ${ENABLE_GEO_ROUTING:-false}
+
+      # LOW_RESOURCE: "true"   # Uncomment for Raspberry Pi / small VMs
+
+    depends_on:
+      app:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/api/health/live 2>/dev/null || wget -qO- http://localhost:9091/metrics > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    networks:
+      - fedhost
+
 volumes:
   db_data:
   minio_data:

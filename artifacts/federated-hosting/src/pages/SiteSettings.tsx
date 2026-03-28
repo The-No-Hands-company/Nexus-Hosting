@@ -542,6 +542,70 @@ function TeamPanel({ siteId }: { siteId: number }) {
   );
 }
 
+// ── SPA Routing card ──────────────────────────────────────────────────────────
+
+function SpaRoutingCard({ siteId, currentValue }: { siteId: number; currentValue: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  const mutation = useMutation({
+    mutationFn: async (spaRouting: boolean) => {
+      const r = await fetch(`${BASE}/api/sites/${siteId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spaRouting }),
+      });
+      if (!r.ok) { const b = await r.json() as { message?: string }; throw new Error(b.message ?? "Failed"); }
+    },
+    onSuccess: (_, val) => {
+      qc.invalidateQueries({ queryKey: ["site", siteId] });
+      toast({ title: val ? "SPA routing enabled" : "Strict 404 enabled" });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card className="border-white/5">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-white text-base flex items-center gap-2">
+          <Globe className="w-4 h-4 text-primary" />Routing Mode
+        </CardTitle>
+        <CardDescription>
+          Controls how unknown paths are handled by the Rust proxy.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between gap-4 p-3 bg-muted/10 border border-white/5 rounded-xl">
+          <div>
+            <p className="text-white text-sm font-semibold">SPA routing</p>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              {currentValue
+                ? "Unknown paths serve index.html — correct for React/Vue/Svelte apps."
+                : "Unknown paths return 404 — correct for multi-page or static sites."}
+            </p>
+          </div>
+          <button
+            onClick={() => mutation.mutate(!currentValue)}
+            disabled={mutation.isPending}
+            className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors focus:outline-none ${
+              currentValue ? "bg-primary" : "bg-muted"
+            }`}
+          >
+            <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform mt-0.5 ${
+              currentValue ? "translate-x-5.5" : "translate-x-0.5"
+            }`} />
+          </button>
+        </div>
+        <p className="text-muted-foreground/60 text-xs">
+          Default: on. Disable for classic multi-page sites where every URL corresponds to an actual file.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SiteSettings() {
   const { id } = useParams<{ id: string }>();
   const siteId = parseInt(id!, 10);
@@ -716,9 +780,10 @@ export default function SiteSettings() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
 
-        {/* ── Redirects ── */}
+          {/* SPA Routing toggle */}
+          <SpaRoutingCard siteId={siteId} currentValue={site.spaRouting !== 0} />
+        </TabsContent>
         <TabsContent value="redirects" className="space-y-4 mt-4">
           <Card className="border-white/5">
             <CardHeader>
