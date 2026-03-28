@@ -1,7 +1,7 @@
 import { requireScope } from "../middleware/tokenAuth";
 import { Router, type IRouter } from "express";
 import { eq, count, ilike, or, sql } from "drizzle-orm";
-import { db, sitesTable, nodesTable } from "@workspace/db";
+import { db, sitesTable, nodesTable, usersTable } from "@workspace/db";
 import {
   CreateSiteBody,
   UpdateSiteBody,
@@ -15,8 +15,7 @@ import { serializeDates } from "../lib/serialize";
 import { asyncHandler, AppError } from "../lib/errors";
 import { parsePagination, buildPaginatedResponse } from "../lib/pagination";
 import { writeLimiter } from "../middleware/rateLimiter";
-
-const router: IRouter = Router();
+import { getEffectiveQuota } from "../lib/plans";const router: IRouter = Router();
 
 const SITE_SELECT = {
   id: sitesTable.id,
@@ -75,6 +74,48 @@ router.post("/sites", writeLimiter, asyncHandler(async (req, res) => {
 
   const parsed = CreateSiteBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest(parsed.error.message);
+
+  // Enforce per-plan limits
+  if (req.isAuthenticated() && req.user?.id) {
+    const [userRecord] = await db
+      .select({ plan: usersTable.plan, storageQuotaMb: usersTable.storageQuotaMb, isAdmin: usersTable.isAdmin })
+      .from(usersTable)
+      .where(eq(usersTable.id, (req.user as any).id))
+      .limit(1);
+
+    if (userRecord && !userRecord.isAdmin) {
+      const limits = getEffectiveQuota(userRecord.plan ?? "free", userRecord.storageQuotaMb ?? 0, false);
+      const [{ siteCount }] = await db
+        .select({ siteCount: count() })
+        .from(sitesTable)
+        .where(eq(sitesTable.ownerId, (req.user as any).id));
+      if (siteCount >= limits.maxSites) {
+        throw AppError.badRequest(
+          `Site limit reached. Your ${userRecord.plan} plan allows ${limits.maxSites} sites. Upgrade to create more.`,
+          "SITE_LIMIT_REACHED",
+        );
+      }
+      // Dynamic sites require pro+
+      const dynamicTypes = ["nlpl", "dynamic", "node", "python"];
+      if (!limits.dynamicSites && dynamicTypes.includes(parsed.data.siteType ?? "")) {
+        throw AppError.badRequest(
+          `Dynamic site types require a Pro or Enterprise plan. Upgrade to enable NLPL/Node.js/Python hosting.`,
+          "PLAN_UPGRADE_REQUIRED",
+        );
+      }
+      // Custom domains require pro+
+      if (!limits.customDomains && parsed.data.domain && !parsed.data.domain.endsWith(`.${process.env.PUBLIC_DOMAIN ?? ""}`)) {
+        // Only enforce if it looks like an external domain (has more than one dot and isn't a subdomain of public domain)
+        const domainParts = parsed.data.domain.split(".");
+        if (domainParts.length > 2) {
+          throw AppError.badRequest(
+            `Custom domains require a Pro or Enterprise plan.`,
+            "PLAN_UPGRADE_REQUIRED",
+          );
+        }
+      }
+    }
+  }
 
   // Enforce FEDERATED_STATIC_ONLY — only allow static/blog/portfolio site types
   const dynamicTypes = ["nlpl", "dynamic", "node", "python"];

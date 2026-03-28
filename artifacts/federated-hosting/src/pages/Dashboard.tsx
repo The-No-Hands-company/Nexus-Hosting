@@ -1,20 +1,61 @@
 import { useGetFederationStats } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Server, Globe, Activity, HardDrive, ArrowUpRight, Loader2, Rocket, ChevronRight, BookOpen, BarChart2, GitBranch, Settings, Zap } from "lucide-react";
+import { Server, Globe, Activity, HardDrive, ArrowUpRight, Loader2, Rocket, ChevronRight, BookOpen, BarChart2, GitBranch, Settings, Zap, Mail, AlertTriangle, X } from "lucide-react";
 import { LoadingState, ErrorState, StatusBadge } from "@/components/shared";
 import { formatGb, formatPercent } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useAuth } from "@workspace/auth-web";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useStatsHourly, useNodes } from "@/lib/apiHooks";
 import { useState } from "react";
 import { OnboardingBanner, OnboardingModal, useOnboarding } from "@/components/Onboarding";
 import { useTranslation } from "react-i18next";
+import { useToast } from "@/components/ui/use-toast";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+// ── Email verification banner ─────────────────────────────────────────────────
+
+function EmailVerificationBanner({ email }: { email: string }) {
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem("fh_email_banner_dismissed") === "1"
+  );
+  const { toast } = useToast();
+
+  const resend = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`${BASE}/api/auth/resend-verification`, {
+        method: "POST", credentials: "include",
+      });
+      if (!r.ok) throw new Error("Failed to resend");
+    },
+    onSuccess: () => toast({ title: "Verification email sent", description: `Check ${email}` }),
+    onError:   () => toast({ title: "Error", description: "Could not send email", variant: "destructive" }),
+  });
+
+  if (dismissed) return null;
+
+  return (
+    <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-sm">
+      <Mail className="w-4 h-4 text-amber-400 shrink-0" />
+      <span className="text-amber-200 flex-1">
+        Please verify your email address <span className="font-mono text-amber-300">{email}</span> to unlock all features.
+      </span>
+      <Button size="sm" variant="outline"
+        className="border-amber-500/40 text-amber-300 hover:bg-amber-500/20 shrink-0"
+        onClick={() => resend.mutate()} disabled={resend.isPending}>
+        {resend.isPending ? "Sending…" : "Resend email"}
+      </Button>
+      <button className="text-amber-500/60 hover:text-amber-400"
+        onClick={() => { setDismissed(true); localStorage.setItem("fh_email_banner_dismissed", "1"); }}>
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
 
 interface MySite {
   id: number; name: string; domain: string; status: string;
@@ -186,6 +227,9 @@ export default function Dashboard() {
       {/* Onboarding banner for guests */}
       {!isAuthenticated && shouldShow && (
         <OnboardingBanner onOpen={() => setOnboardingOpen(true)} />
+        {user && !(user as any).emailVerified && (user as any).email && (
+          <EmailVerificationBanner email={(user as any).email} />
+        )}
       )}
       {!isAuthenticated && !shouldShow && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>

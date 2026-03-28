@@ -171,6 +171,13 @@ router.get("/callback", async (req: Request, res: Response) => {
     claims as unknown as Record<string, unknown>,
   );
 
+  // Send email verification if not yet verified
+  if (dbUser.email && !dbUser.emailVerified) {
+    const { sendVerificationEmail } = await import("../lib/emailVerification.js");
+    sendVerificationEmail(dbUser.id, dbUser.email, process.env.PUBLIC_DOMAIN ?? "localhost:8080")
+      .catch(() => {}); // Non-blocking — never fail login over this
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {
     user: {

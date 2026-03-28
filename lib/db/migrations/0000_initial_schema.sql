@@ -509,3 +509,108 @@ CREATE INDEX IF NOT EXISTS "federation_blocks_domain_idx" ON "federation_blocks"
 -- ─── spa_routing column on sites ────────────────────────────────────────────
 -- 1 = serve index.html for unknown paths (SPA), 0 = strict 404 (MPA/static)
 ALTER TABLE "sites" ADD COLUMN IF NOT EXISTS "spa_routing" INTEGER NOT NULL DEFAULT 1;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Category 1: Core Platform Gaps
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ─── User plan enum + new columns ────────────────────────────────────────────
+DO $$ BEGIN
+  CREATE TYPE "user_plan" AS ENUM ('free', 'pro', 'enterprise');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "email_verified"   INTEGER   NOT NULL DEFAULT 0;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "storage_quota_mb" INTEGER   NOT NULL DEFAULT 0;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "plan"             "user_plan" NOT NULL DEFAULT 'free';
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "suspended_at"     TIMESTAMP WITH TIME ZONE;
+
+-- ─── Email verification tokens ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS "email_verification_tokens" (
+  "id"         SERIAL PRIMARY KEY,
+  "user_id"    VARCHAR NOT NULL,
+  "email"      VARCHAR NOT NULL,
+  "token"      VARCHAR(64) NOT NULL UNIQUE,
+  "expires_at" TIMESTAMP WITH TIME ZONE NOT NULL,
+  "used_at"    TIMESTAMP WITH TIME ZONE,
+  "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "email_tokens_user_idx"  ON "email_verification_tokens"("user_id");
+CREATE INDEX IF NOT EXISTS "email_tokens_token_idx" ON "email_verification_tokens"("token");
+
+-- ─── Abuse reports ────────────────────────────────────────────────────────────
+DO $$ BEGIN
+  CREATE TYPE "abuse_reason" AS ENUM (
+    'spam','phishing','malware','csam','copyright','harassment','illegal_content','other'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "abuse_status" AS ENUM (
+    'pending','under_review','resolved_removed','resolved_no_action','escalated'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS "abuse_reports" (
+  "id"             SERIAL PRIMARY KEY,
+  "site_id"        INTEGER NOT NULL,
+  "site_domain"    TEXT    NOT NULL,
+  "reporter_ip"    TEXT,
+  "reporter_email" TEXT,
+  "reason"         "abuse_reason" NOT NULL,
+  "description"    TEXT,
+  "evidence_url"   TEXT,
+  "status"         "abuse_status" NOT NULL DEFAULT 'pending',
+  "reviewed_by"    VARCHAR,
+  "reviewed_at"    TIMESTAMP WITH TIME ZONE,
+  "review_notes"   TEXT,
+  "action_taken"   INTEGER NOT NULL DEFAULT 0,
+  "created_at"     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  "updated_at"     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "abuse_reports_site_idx"   ON "abuse_reports"("site_id");
+CREATE INDEX IF NOT EXISTS "abuse_reports_status_idx" ON "abuse_reports"("status");
+
+-- ─── IP bans ──────────────────────────────────────────────────────────────────
+DO $$ BEGIN
+  CREATE TYPE "ip_ban_scope" AS ENUM ('api', 'sites', 'all');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS "ip_bans" (
+  "id"         SERIAL PRIMARY KEY,
+  "ip_address" TEXT NOT NULL,
+  "cidr_range" TEXT,
+  "reason"     TEXT,
+  "scope"      "ip_ban_scope" NOT NULL DEFAULT 'all',
+  "banned_by"  VARCHAR,
+  "expires_at" TIMESTAMP WITH TIME ZONE,
+  "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "ip_bans_ip_idx" ON "ip_bans"("ip_address");
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Category 2: Federation Maturity
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ─── Node trust scores ────────────────────────────────────────────────────────
+DO $$ BEGIN
+  CREATE TYPE "node_trust_level" AS ENUM (
+    'unverified', 'verified', 'trusted', 'blocked'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS "node_trust" (
+  "id"                SERIAL PRIMARY KEY,
+  "node_domain"       TEXT NOT NULL UNIQUE,
+  "trust_level"       "node_trust_level" NOT NULL DEFAULT 'unverified',
+  "successful_pings"  INTEGER NOT NULL DEFAULT 0,
+  "failed_pings"      INTEGER NOT NULL DEFAULT 0,
+  "uptime_percent"    INTEGER NOT NULL DEFAULT 100,
+  "first_seen_at"     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  "last_ping_at"      TIMESTAMP WITH TIME ZONE,
+  "manually_reviewed" INTEGER NOT NULL DEFAULT 0,
+  "reviewed_by"       VARCHAR,
+  "review_notes"      TEXT,
+  "updated_at"        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "node_trust_domain_idx" ON "node_trust"("node_domain");
+CREATE INDEX IF NOT EXISTS "node_trust_level_idx"  ON "node_trust"("trust_level");

@@ -10,6 +10,7 @@ import { authMiddleware } from "./middlewares/authMiddleware";
 import { tokenAuthMiddleware } from "./middleware/tokenAuth";
 import { globalErrorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { globalLimiter, speedLimiter } from "./middleware/rateLimiter";
+import { apiBanMiddleware } from "./middleware/ipBan";
 import router from "./routes";
 import { metricsMiddleware, registry } from "./lib/metrics";
 import { geoRoutingMiddleware } from "./lib/geoRouting";
@@ -93,6 +94,7 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
+app.use(apiBanMiddleware);
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 app.use(globalLimiter);

@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, sitesTable, siteDeploymentsTable, siteFilesTable, nodesTable, federationEventsTable } from "@workspace/db";
-import { eq, and, isNull, count, desc, sql } from "drizzle-orm";
+import { db, sitesTable, siteDeploymentsTable, siteFilesTable, nodesTable, federationEventsTable, usersTable } from "@workspace/db";
+import { eq, and, isNull, count, desc, sql, sum } from "drizzle-orm";
 import { storage, ObjectNotFoundError } from "../lib/storageProvider";
 import { signMessage } from "../lib/federation";
 import { asyncHandler, AppError } from "../lib/errors";
@@ -11,6 +11,7 @@ import { invalidateSiteCache } from "../lib/domainCache";
 import { enqueueSyncRetry } from "../lib/syncRetryQueue";
 import { emailDeploySuccess, emailDeployFailed } from "../lib/email";
 import { deploymentsTotal, storageOperationsTotal } from "../lib/metrics";
+import { getEffectiveQuota } from "../lib/plans";
 import {
   GetSiteFileUploadUrlBody,
   RegisterSiteFileBody,
@@ -165,6 +166,48 @@ router.post("/sites/:id/deploy", deployLimiter, requireScope("deploy"), asyncHan
         `Node storage quota exceeded. Available: ${availableMb.toFixed(0)}MB, Deployment requires: ${totalSizeMb.toFixed(0)}MB`,
         "NODE_QUOTA_EXCEEDED",
       );
+    }
+  }
+
+  // ── Per-user storage quota enforcement ─────────────────────────────────────
+  if (req.isAuthenticated() && req.user?.id) {
+    const [userRecord] = await db
+      .select({ plan: usersTable.plan, storageQuotaMb: usersTable.storageQuotaMb, isAdmin: usersTable.isAdmin })
+      .from(usersTable)
+      .where(eq(usersTable.id, req.user.id))
+      .limit(1);
+
+    if (userRecord && !userRecord.isAdmin) {
+      const limits = getEffectiveQuota(
+        userRecord.plan ?? "free",
+        userRecord.storageQuotaMb ?? 0,
+        Boolean(userRecord.isAdmin),
+      );
+
+      // Sum storage for all sites owned by this user
+      const [userStorage] = await db
+        .select({ totalMb: sql<number>`COALESCE(SUM(${sitesTable.storageUsedMb}), 0)` })
+        .from(sitesTable)
+        .where(eq(sitesTable.ownerId, req.user.id));
+
+      const currentMb = Number(userStorage?.totalMb ?? 0);
+      if (currentMb + totalSizeMb > limits.storageQuotaMb) {
+        const availableMb = Math.max(0, limits.storageQuotaMb - currentMb);
+        throw AppError.badRequest(
+          `Storage quota exceeded. Your ${userRecord.plan} plan allows ${limits.storageQuotaMb}MB total. ` +
+          `You have ${currentMb.toFixed(0)}MB used and ${availableMb.toFixed(0)}MB available. ` +
+          `Upgrade your plan to increase your quota.`,
+          "USER_QUOTA_EXCEEDED",
+        );
+      }
+
+      // Check per-deployment size limit
+      if (totalSizeMb > limits.maxDeploySizeMb) {
+        throw AppError.badRequest(
+          `Deployment too large (${totalSizeMb.toFixed(1)}MB). Your ${userRecord.plan} plan allows ${limits.maxDeploySizeMb}MB per deployment.`,
+          "DEPLOY_SIZE_EXCEEDED",
+        );
+      }
     }
   }
 
