@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, nodesTable, siteDeploymentsTable, siteFilesTable, sitesTable, federationEventsTable } from "@workspace/db";
-import { eq, desc, and, count } from "drizzle-orm";
+import { db, nodesTable, siteDeploymentsTable, siteFilesTable, sitesTable, federationEventsTable, nodeTrustTable } from "@workspace/db";
+import { eq, desc, and, count, sql } from "drizzle-orm";
 import { generateKeyPair, signMessage, verifySignature, createFederationChallenge, stripPemHeaders } from "../lib/federation";
 import { serializeDates } from "../lib/serialize";
 import { asyncHandler, AppError } from "../lib/errors";
@@ -80,6 +80,20 @@ router.post("/federation/ping", federationLimiter, asyncHandler(async (req, res)
 
   if (!valid) {
     logger.warn({ nodeDomain }, "Federation ping rejected — invalid signature");
+    // Record failed ping in trust table
+    await db.insert(nodeTrustTable).values({
+      nodeDomain,
+      trustLevel:  "unverified",
+      failedPings: 1,
+      lastPingAt:  new Date(),
+    }).onConflictDoUpdate({
+      target: nodeTrustTable.nodeDomain,
+      set: {
+        failedPings: sql`${nodeTrustTable.failedPings} + 1`,
+        lastPingAt:  new Date(),
+        updatedAt:   new Date(),
+      },
+    }).catch(() => {});
     throw AppError.unauthorized("Invalid signature — node identity could not be verified", "INVALID_SIGNATURE");
   }
 
@@ -87,6 +101,27 @@ router.post("/federation/ping", federationLimiter, asyncHandler(async (req, res)
     .update(nodesTable)
     .set({ lastSeenAt: new Date(), verifiedAt: new Date(), status: "active" })
     .where(eq(nodesTable.domain, nodeDomain));
+
+  // Update trust score — upsert into node_trust table
+  await db.insert(nodeTrustTable).values({
+    nodeDomain,
+    trustLevel:      "verified",
+    successfulPings: 1,
+    lastPingAt:      new Date(),
+  }).onConflictDoUpdate({
+    target: nodeTrustTable.nodeDomain,
+    set: {
+      successfulPings: sql`${nodeTrustTable.successfulPings} + 1`,
+      lastPingAt:      new Date(),
+      updatedAt:       new Date(),
+      // Promote to trusted after 50 consecutive verified pings
+      trustLevel: sql`CASE
+        WHEN ${nodeTrustTable.trustLevel} = 'blocked' THEN ${nodeTrustTable.trustLevel}
+        WHEN ${nodeTrustTable.successfulPings} + 1 >= 50 THEN 'trusted'
+        ELSE 'verified'
+      END`,
+    },
+  });
 
   logger.info({ nodeDomain }, "Federation ping verified");
   res.json({ verified: true, protocol: PROTOCOL_VERSION, challenge: createFederationChallenge() });

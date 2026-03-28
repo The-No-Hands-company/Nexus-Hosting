@@ -514,15 +514,17 @@ ALTER TABLE "sites" ADD COLUMN IF NOT EXISTS "spa_routing" INTEGER NOT NULL DEFA
 -- Category 1: Core Platform Gaps
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- ─── User plan enum + new columns ────────────────────────────────────────────
-DO $$ BEGIN
-  CREATE TYPE "user_plan" AS ENUM ('free', 'pro', 'enterprise');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "email_verified"   INTEGER   NOT NULL DEFAULT 0;
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "storage_quota_mb" INTEGER   NOT NULL DEFAULT 0;
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "plan"             "user_plan" NOT NULL DEFAULT 'free';
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "suspended_at"     TIMESTAMP WITH TIME ZONE;
+-- ─── User account additions ──────────────────────────────────────────────────
+-- email_verified: verified via link sent to email on first login
+-- storage_cap_mb: operator-set per-user cap (0 = no cap, node capacity is the only limit)
+-- suspended_at:   operator can suspend a user without deleting their account
+--
+-- NOTE: FedHost is free — there are NO paid tiers, NO pricing, NO limits except
+-- what the node operator sets for capacity reasons. storage_cap_mb is a node
+-- administration tool, not a paywall.
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "email_verified"  INTEGER  NOT NULL DEFAULT 0;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "storage_cap_mb"  INTEGER  NOT NULL DEFAULT 0;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "suspended_at"    TIMESTAMP WITH TIME ZONE;
 
 -- ─── Email verification tokens ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS "email_verification_tokens" (

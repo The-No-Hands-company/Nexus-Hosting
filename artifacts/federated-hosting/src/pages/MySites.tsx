@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@workspace/auth-web";
 import { useSites } from "@/lib/apiHooks";
 import { Link } from "wouter";
-import { Globe, Upload, ExternalLink, Plus, LogIn, Eye, Clock, Zap, BarChart2, Settings, Inbox, GitBranch, Webhook, MoreHorizontal, Copy, Send, Download, Trash2 } from "lucide-react";
+import { Globe, Upload, ExternalLink, Plus, LogIn, Eye, Clock, Zap, BarChart2, Settings, Inbox, GitBranch, Webhook, MoreHorizontal, Copy, Send, Download, Trash2, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,9 @@ function SiteMoreMenu({ site }: { site: Site & { hitCount?: number; replicaCount
   const qc = useQueryClient();
   const [cloneOpen, setCloneOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("spam");
+  const [reportDesc, setReportDesc] = useState("");
   const [cloneName, setCloneName] = useState(`${site.name} (copy)`);
   const [cloneDomain, setCloneDomain] = useState(`${site.domain}-copy`);
   const [transferEmail, setTransferEmail] = useState("");
@@ -96,6 +99,10 @@ function SiteMoreMenu({ site }: { site: Site & { hitCount?: number; replicaCount
           <DropdownMenuItem className="gap-2 cursor-pointer" onClick={exportSite}>
             <Download className="w-3.5 h-3.5" />Export manifest
           </DropdownMenuItem>
+          <DropdownMenuSeparator className="bg-white/5" />
+          <DropdownMenuItem className="gap-2 cursor-pointer text-red-400 focus:text-red-400" onClick={() => setReportOpen(true)}>
+            <Flag className="w-3.5 h-3.5" />Report abuse
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -145,6 +152,46 @@ function SiteMoreMenu({ site }: { site: Site & { hitCount?: number; replicaCount
                 variant="outline" onClick={() => transferMutation.mutate()}
                 disabled={!transferEmail || transferMutation.isPending}>
                 {transferMutation.isPending ? "Sending…" : "Initiate transfer"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Report abuse dialog */}
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="sm:max-w-sm border-white/10 bg-card">
+          <DialogHeader><DialogTitle className="text-white">Report abuse</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Reason</label>
+              <select value={reportReason} onChange={e => setReportReason(e.target.value)}
+                className="w-full bg-muted/20 border border-white/8 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary/40">
+                {["spam","phishing","malware","csam","copyright","harassment","illegal_content","other"].map(r => (
+                  <option key={r} value={r}>{r.replace("_", " ")}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Description (optional)</label>
+              <textarea value={reportDesc} onChange={e => setReportDesc(e.target.value)} rows={3}
+                placeholder="Describe the issue…"
+                className="w-full bg-muted/20 border border-white/8 rounded-lg px-3 py-2 text-white text-sm resize-none focus:outline-none focus:border-primary/40" />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 border-white/10" onClick={() => setReportOpen(false)}>Cancel</Button>
+              <Button className="flex-1 bg-red-500/20 border-red-500/30 text-red-400 hover:bg-red-500/30"
+                variant="outline"
+                onClick={async () => {
+                  await fetch(`${BASE}/api/abuse/report`, {
+                    method: "POST", credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ siteDomain: site.domain, reason: reportReason, description: reportDesc }),
+                  });
+                  setReportOpen(false);
+                  toast({ title: "Report submitted", description: "Thank you. Our team will review it." });
+                }}>
+                Submit report
               </Button>
             </div>
           </div>

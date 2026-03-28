@@ -1,19 +1,17 @@
 # Federated Hosting — Roadmap
 
-A living document tracking what is built, what is in progress, and what must be completed before real production traffic.
-
-**Read `docs/HONEST_ASSESSMENT.md` before using this roadmap.** Many items previously marked ✅ are working in development but have known production gaps.
+A living document tracking what is built, what remains, and what the honest gaps are before real production traffic.
 
 ---
 
 ## Legend
 
 - ✅ Functional and tested
-- ⚠️ Implemented but has known production gap (see HONEST_ASSESSMENT.md)
+- ⚠️ Works but has a known production gap
 - 🔨 In active development
 - 📋 Planned
-- ❌ Documented/claimed but not actually implemented
-- 🔮 Future
+- ❌ Not built
+- 🔮 Future / nice to have
 
 ---
 
@@ -21,20 +19,19 @@ A living document tracking what is built, what is in progress, and what must be 
 
 | Feature | Status | Notes |
 |---|---|---|
-| PostgreSQL schema + Drizzle ORM | ✅ | Good schema, correct indexes |
-| Replit Auth (OIDC) | ✅ | Browser flows work |
-| Ed25519 key pair generation + signing | ✅ | Correct implementation |
+| PostgreSQL schema + Drizzle ORM | ✅ | 25+ tables, correct indexes |
+| Database migrations | ✅ | `0000_initial_schema.sql` + `migrate.ts` runner |
+| OIDC auth (OpenID Connect + PKCE) | ✅ | Browser + API token flows |
+| Ed25519 key pair + signing | ✅ | Correct implementation |
 | `/.well-known/federation` discovery | ✅ | |
-| Federation handshake + ping | ✅ | 5-minute timestamp window enforced |
-| Node health monitor | ✅ | N=3 consecutive failures required, exponential backoff |
-| Object storage (file upload/download) | ✅ | S3StorageProvider + ReplitStorageProvider, env-var selected |
-| Site file serving (host-header routing) | ✅ | LRU cache (10K domains, 50K files), invalidated on deploy |
-| Capacity tracking | ✅ | |
-| Rate limiting | ✅ | Redis-backed when REDIS_URL set; warns in prod if missing |
-| Structured logging + error handling | ✅ | Pino, AppError, stack traces redacted in prod |
-| Graceful shutdown | ✅ | |
-| DB connection pool | ✅ | Explicit max/min/timeout config, error handler |
-| Database migrations | ✅ | 0000_initial_schema.sql + migrate.ts runner |
+| Federation handshake + ping | ✅ | 5-minute replay attack window |
+| Node health monitor | ✅ | N=3 consecutive failures, exponential backoff |
+| Object storage (S3/MinIO/R2/B2) | ✅ | `S3StorageProvider` (AWS SDK v3) + `ReplitStorageProvider` |
+| Site file serving (host-header routing) | ✅ | LRU cache: 10K domains, 50K files, 5-min TTL |
+| Rate limiting | ✅ | Redis-backed; 7 limiters; warns if Redis absent |
+| Structured logging + error handling | ✅ | Pino, AppError, no stack traces in prod |
+| Graceful shutdown | ✅ | SIGTERM/SIGINT handled |
+| DB connection pool | ✅ | Explicit max/min/timeout/error handler |
 
 ---
 
@@ -43,16 +40,17 @@ A living document tracking what is built, what is in progress, and what must be 
 | Feature | Status | Notes |
 |---|---|---|
 | Dashboard (stats, chart) | ✅ | |
-| Federation Nodes + Sites pages | ✅ | |
-| My Sites (auth, inline register) | ✅ | |
-| Deploy page (upload, preview, rollback) | ✅ | |
-| Site preview modal (iframe sandbox) | ✅ | |
-| Federation Protocol page | ✅ | |
-| Onboarding flow | ✅ | |
-| Node Marketplace | ✅ | |
-| API Reference page | ✅ | |
-| Bahasa Indonesia i18n | ✅ | HTTP backend (i18next-http-backend), loaded on demand from /locales/ |
-| React lazy loading | ✅ | All 14 routes code-split |
+| My Sites (deploy, rollback, clone, transfer, export) | ✅ | |
+| Deploy page (upload, preview, rollback, diff) | ✅ | |
+| Site preview modal | ✅ | iframe sandbox |
+| Deployment diff (visual inline panel) | ✅ | +/~/- file counts, net size delta |
+| Onboarding flow | ✅ | localStorage-dismissed modal |
+| Bahasa Indonesia i18n | ✅ | `i18next-http-backend`, lazy-loaded from /locales/ |
+| React lazy loading | ✅ | All routes code-split |
+| Email verification | ✅ | SHA-256 tokens, 24h TTL, resend banner in dashboard |
+| Per-user storage cap | ✅ | Operator-set cap per user (default: unlimited). FedHost is always free. |
+| User suspension | ✅ | Operators can suspend abusive users without deleting data |
+| Abuse report button | ✅ | On every site card; 8 reason categories |
 
 ---
 
@@ -60,12 +58,13 @@ A living document tracking what is built, what is in progress, and what must be 
 
 | Feature | Status | Notes |
 |---|---|---|
-| API tokens (Bearer auth) | ✅ | SHA-256 hashed |
+| API tokens (Bearer auth) | ✅ | SHA-256 hashed, scoped (read/write/deploy) |
 | Site team members (owner/editor/viewer) | ✅ | |
-| Site visibility (public/private) | ✅ | |
-| Password-protected sites | ✅ | HMAC-signed cookie, timingSafeEqual verified |
+| Invitation system | ✅ | Email invites, 7-day tokens, accept flow |
+| Site visibility (public/private/password) | ✅ | HMAC-signed cookie, timingSafeEqual verification |
 | Custom domain CNAME+TXT verification | ✅ | |
-| Custom domain routing in host router | ✅ | Subject to caching gap above |
+| SPA routing toggle | ✅ | Per-site flag, drives Rust proxy index.html fallback |
+| IP ban system | ✅ | API + site scope, 60s in-memory cache, admin CRUD |
 
 ---
 
@@ -74,11 +73,16 @@ A living document tracking what is built, what is in progress, and what must be 
 | Feature | Status | Notes |
 |---|---|---|
 | Site sync push (notify peers on deploy) | ✅ | Ed25519 signed |
-| Federation manifest endpoint | ✅ | Presigned URLs valid 1 hour |
-| Site sync pull (file replication) | ✅ | Retry queue with exponential backoff (30s→2m→10m→1h→6h), max 10 attempts |
-| Gossip-based peer discovery | ✅ | DB-backed (nodesTable); push cycle reads DB each time, works multi-instance |
+| Federation manifest endpoint | ✅ | Presigned S3 URLs, 1h validity |
+| Site sync pull (file replication) | ✅ | Retry queue: 30s→2m→10m→1h→6h, max 10 attempts |
+| Gossip-based peer discovery | ✅ | DB-backed, multi-instance safe |
 | Same-domain conflict resolution | ✅ | First-write-wins + pubkey tiebreaker |
-| Bootstrap node registry | ✅ | |
+| Bootstrap node registry | ✅ | Returns active verified peers |
+| Federation replay attack window | ✅ | 5-minute timestamp enforcement |
+| Node trust scoring | ✅ | `node_trust` table; unverified→verified→trusted at 50 pings |
+| Federation blocklist (defederation) | ✅ | Full CRUD, enforced in gossip/ping/sync |
+| Federation for dynamic sites | ❌ | NLPL/Node process state not replicated |
+| Canonical external seed nodes | ❌ | Bootstrap only returns nodes in your own DB |
 
 ---
 
@@ -86,12 +90,18 @@ A living document tracking what is built, what is in progress, and what must be 
 
 | Feature | Status | Notes |
 |---|---|---|
-| Analytics buffer → hourly rollup | ✅ | Uses inArray() — correct and safe |
+| Analytics buffer → hourly rollup | ✅ | `inArray()` safe, 6h retention cleanup |
 | Per-site analytics page | ✅ | |
 | Network-wide analytics | ✅ | |
-| Node operator admin dashboard | ✅ | requireAdmin middleware, isAdmin DB flag + ADMIN_USER_IDS env var |
-| Admin node settings | ✅ | requireAdmin enforced |
-| Webhook notifications (Ed25519 signed) | ✅ | |
+| SSE real-time analytics | ✅ | EventSource, live hit counter |
+| Node operator admin dashboard | ✅ | `requireAdmin` middleware, `isAdmin` DB flag + `ADMIN_USER_IDS` env |
+| Admin moderation panel | ✅ | Abuse report review/takedown, IP ban management UI |
+| Admin audit logging | ✅ | `admin_audit_log` table, GET /api/admin/audit-log |
+| Prometheus metrics | ✅ | `prom-client`, 13 metrics, `/metrics` endpoint |
+| Grafana dashboards | ✅ | node-overview, federation-health, site-traffic |
+| Webhook notifications | ✅ | Ed25519 signed, delivery log, 5-attempt retry queue |
+| Form submission backend | ✅ | POST /forms/:domain/:name, spam scoring, CSV export |
+| Full-text site search | ✅ | tsvector GIN index, Postgres trigger |
 
 ---
 
@@ -99,13 +109,16 @@ A living document tracking what is built, what is in progress, and what must be 
 
 | Feature | Status | Notes |
 |---|---|---|
-| `fh` CLI (init, deploy, rollback, status, analytics, sites, tokens) | ✅ | Works against running node |
-| `@fedhost/cli` npm package | ⚠️ | Package structured correctly, not published |
+| `fh` CLI core (deploy, rollback, status, sites, tokens) | ✅ | |
+| `fh domains` | ✅ | list/add/verify/delete/tls-status |
+| `fh teams` | ✅ | list/invite/role/remove/revoke |
+| `fh create --type` | ✅ | HTML/React/Vue/Next/Svelte + nlpl/node/python dynamic |
+| `fh env`, `fh forms`, `fh logs`, `fh watch` | ✅ | |
+| `@fedhost/cli` npm package | ⚠️ | Structured correctly; not published to npm |
 | GitHub Actions deploy workflow | ✅ | |
-| GitHub Actions CI (typecheck, lint, build) | ✅ | |
-| GitHub Actions npm publish workflow | ✅ | Needs `NPM_TOKEN` secret |
-| Docker Compose | ✅ | Redis + MinIO + S3StorageProvider wired, REDIS_URL passed to app |
-| Dockerfile (multi-stage) | ✅ | |
+| Docker Compose | ✅ | Redis + MinIO + Caddy + Rust proxy wired |
+| Dockerfile (multi-stage, non-root) | ✅ | |
+| Rust proxy (`crates/fedhost-proxy`) | ✅ | All 9 TODOs done: streaming, LRU, Redis invalidation, geo, metrics, Brotli |
 
 ---
 
@@ -113,80 +126,92 @@ A living document tracking what is built, what is in progress, and what must be 
 
 | Feature | Status | Notes |
 |---|---|---|
-| ACME/Let's Encrypt automation | ✅ | HTTP-01 + DNS-01 (no port 80), account key, cert to disk, 12h renewal, docs/TLS.md |
-| TLS via Caddy (documented) | ✅ | Caddy instruction accurate |
-| Geographic routing (closest-node redirect) | ✅ | Region inference + 302 redirect |
-| Geo routing: latency probing | ⚠️ | Region header-based (fast, no network probes needed for correctness) |
+| ACME/Let's Encrypt automation | ✅ | HTTP-01 + DNS-01, 12h renewal, expiry email |
+| TLS via Caddy | ✅ | Documented; Caddyfile dual-routing (TS + Rust proxy) |
+| Geographic routing (closest-node redirect) | ✅ | Region scoring, 40+ country mappings |
 
 ---
 
-## Production Gaps Remaining
+## Phase 8 — Build Pipeline
 
-| # | Issue | Severity | Status |
-|---|---|---|---|
-| 1 | S3/MinIO object storage | CRITICAL | ✅ Fixed — S3StorageProvider, AWS SDK v3 |
-| 2 | Drizzle migrations | CRITICAL | ✅ Fixed — 0000_initial_schema.sql + migrate.ts |
-| 3 | Redis rate limiting | CRITICAL | ✅ Fixed — shared Redis store, falls back with warning |
-| 4 | Unlock cookie security | HIGH | ✅ Fixed — HMAC-signed, timingSafeEqual |
-| 5 | Admin RBAC | HIGH | ✅ Fixed — requireAdmin middleware, isAdmin flag |
-| 6 | Host router LRU cache | HIGH | ✅ Fixed — 10K domain + 50K file entries |
-| 7 | DB pool configuration | MEDIUM | ✅ Fixed — max/min/timeout/error handler |
-| 8 | Session expiry cleanup | MEDIUM | ✅ Fixed — 6-hour background job |
-| 9 | Analytics bulk delete | MEDIUM | ✅ Fixed — uses inArray() |
-| 10 | Health monitor threshold | MEDIUM | ✅ Fixed — N=3 consecutive failures |
-| 11 | Replay attack window | MEDIUM | ✅ Fixed — 5-minute timestamp check |
-| 12 | i18n async loading | LOW | ✅ Fixed — i18next-http-backend, HTTP-fetched |
-| 13 | Federation sync retry | MEDIUM | ✅ Fixed — exponential backoff queue, 10 max attempts |
-| 14 | ACME TLS automation | MEDIUM | ✅ Full acme-client implementation |
-| 15 | Admin audit logging | MEDIUM | ✅ auditLog(), admin_audit_log table, GET /api/admin/audit-log |
-| 16 | Content deduplication | LOW | ✅ content_hash + SHA-256, CLI sends hash, server deduplicates |
-| 17 | Prometheus metrics | LOW | ✅ prom-client, 13 metrics, GET /metrics, metricsMiddleware, 30s gauge collector |
-| 18 | Gossip peer state | ✅ | Peer list stored in PostgreSQL nodes table — shared across instances naturally |
-| 19 | Session store (multi-instance) | MEDIUM | ✅ Redis-first with PostgreSQL fallback; cross-instance session sharing |
+| Feature | Status | Notes |
+|---|---|---|
+| Git clone → install → build → deploy | ✅ | |
+| Git webhook auto-deploy | ✅ | GitHub/GitLab HMAC verification |
+| Build log streaming | ✅ | SSE, visible in dashboard |
+| Build cache | ✅ | Lockfile SHA-256 → skip install on hit; `BUILD_CACHE_DIR` configurable |
+| Preview deployments | ✅ | Non-main branches → `{branch}--{domain}`; `isPreview` + `previewDomain` in response |
+| Build environment injection | ✅ | Per-site env vars injected at build time |
+| NLPL / Node.js / Python dynamic sites | ✅ | Process manager, port pool, health checks |
+
+---
+
+## Remaining Gaps (Honest — March 2026)
+
+### Category 1 — Core Platform
+
+| Gap | Severity | Status |
+|---|---|---|
+| Billing / payment processing | N/A | FedHost is free. Donations only. No tiers, no Stripe. |
+| Email verification enforced on deploys | MEDIUM | ⚠️ Email sent on login; unverified users can still deploy |
+| Malware scanning on upload | HIGH | ❌ No ClamAV hook or content scanning |
+| CDN integration | LOW | ❌ Not built |
+
+### Category 2 — Federation Maturity
+
+| Gap | Severity | Status |
+|---|---|---|
+| Canonical external seed node list | HIGH | ❌ A fresh node has no peers to start from |
+| Dynamic site federation | MEDIUM | ❌ NLPL/Node state/env/DB not replicated |
+| Node trust score in federation UI | LOW | ⚠️ DB table exists; not surfaced in frontend |
+
+### Category 3 — Security
+
+| Gap | Severity | Status |
+|---|---|---|
+| CIDR-range IP bans in middleware | MEDIUM | ⚠️ Schema supports it; only exact IP checked |
+| Rust proxy per-domain rate limiting shared | MEDIUM | ⚠️ In-memory per-proxy-instance only |
+
+### Category 4 — Operator Experience
+
+| Gap | Severity | Status |
+|---|---|---|
+| Upgrade runbook | HIGH | ❌ Not written |
+| Incident response runbook | MEDIUM | ❌ Not written |
+| `@fedhost/cli` published to npm | LOW | ❌ Not published |
 
 ---
 
 ## Scaling Checklist (Pre-10K Users)
 
-- [ ] Redis deployed and all stores configured
-- [ ] Object storage working with S3/MinIO
-- [ ] Migrations committed and tested
-- [ ] Host router LRU cache in place
-- [ ] Load test: 100 req/s sustained for 1 hour — measure p99 latency
-- [ ] Database query analysis: `EXPLAIN ANALYZE` all hot paths
-- [ ] CDN in front of reverse proxy
-- [ ] Horizontal scaling tested (2+ API server instances)
-- [ ] Federation sync reliability test: simulate node downtime + recovery
+- [ ] Redis deployed and `REDIS_URL` configured
+- [ ] Object storage verified (S3/R2/MinIO bucket accessible)
+- [ ] Migrations applied on production DB
+- [ ] Load test: 100 req/s sustained 1 hour, p99 < 150ms
+- [ ] `EXPLAIN ANALYZE` on hot DB paths
+- [ ] CDN in front of Caddy
+- [ ] 2+ API server instances verified (session sharing via Redis)
+- [ ] Federation sync reliability test: node downtime + recovery
+- [ ] Email delivery tested end-to-end
+- [ ] Abuse report flow tested end-to-end (submit → admin review → takedown)
+- [ ] Build cache dir (`BUILD_CACHE_DIR`) on a persistent volume
 
 ---
 
 ## Future Work
 
-| Feature | Status | Notes |
-|---|---|---|
-| Paid plans / node sponsorship | 🔮 | Revenue model not designed |
-| Prometheus metrics | ✅ | `prom-client`, 12 metrics + Node.js defaults, `/metrics` endpoint |
-| Grafana dashboards | ✅ | `monitoring/grafana/` — node overview, federation health, site traffic |
-| OpenTelemetry distributed tracing | 🔮 | |
-| Virtual scrolling for large lists | 🔮 | Admin lists paginated; virtual scroll deferred |
-| CDN integration guide | 🔮 | |
-| Multi-region PostgreSQL (read replicas) | 🔮 | |
-| Content deduplication (file hash) | ✅ | `content_hash` column, dedup on upload, cross-site reuse |
+| Feature | Notes |
+|---|---|
+| Donation / sponsorship link | Optional — FedHost is free; donations welcome but never required |
+| Malware scanning (ClamAV) | Hook on upload, async scan, takedown on detection |
+| Canonical public seed node registry | Well-known URL any new node can bootstrap from |
+| Dynamic site federation | Replicate NLPL process config + env (not state) |
+| CIDR-range IP bans | Extend middleware to check subnets |
+| Published `@fedhost/cli` | `npm publish` with `NPM_TOKEN` secret |
+| OpenTelemetry tracing | Distributed traces across TS + Rust |
+| Multi-region PostgreSQL | Read replicas for analytics queries |
+| Virtual scrolling for large lists | Admin lists paginated today |
 
 ---
 
-*Last updated: March 2026. This document is intentionally critical — see `docs/HONEST_ASSESSMENT.md`.*
-| – | Data retention job | – | ✅ 6h cleanup: analytics/forms/webhooks/builds/sessions/audit log |
-| – | Webhook delivery log + retry | – | ✅ Persistent log, 5-attempt exponential backoff retry queue |
-| – | Full-text site search | – | ✅ tsvector GIN index, plainto_tsquery, Postgres trigger |
-| – | SSE real-time analytics | – | ✅ EventSource stream, live hit counter in analytics page |
-| – | Form submission backend | – | ✅ POST /forms/:domain/:name, spam scoring, email notify, CSV export |
-| – | Build pipeline (git) | – | ✅ Clone → install → build → deploy, parallel upload, env injection |
-| – | Git webhook auto-deploy | – | ✅ GitHub/GitLab HMAC verification, auto-trigger on push |
-| – | 2FA enforcement | – | ✅ Enforced in OIDC callback, Redis lockout after 5 failures |
-| – | Shell completion | – | ✅ bash/zsh/fish via fh completion |
-| – | fh env command | – | ✅ Per-site build env vars, secret masking, CRUD |
-| – | Per-site rate limiting | – | ✅ deployLimiter, userWriteLimiter keyed by user ID |
-| – | Site health monitoring | – | ✅ 10-min checks, history in DB, site_down webhook |
-| – | Invitation system | – | ✅ Email invites with 7d tokens, pending state, accept flow |
-| – | Password gate security | – | ✅ HMAC-signed cookies, 5-attempt brute force limit |
+*Last updated: March 2026. Cross-reference `docs/HONEST_ASSESSMENT.md` before deploying.*

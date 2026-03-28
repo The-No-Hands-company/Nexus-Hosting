@@ -110,9 +110,10 @@ export async function runBuild(buildId: number, siteId: number, opts: {
     });
     log("[build] Clone complete");
 
-    // ── Step 2: Install ──────────────────────────────────────────────────────
+    // ── Step 2: Install (with cache) ──────────────────────────────────────────
     const hasYarnLock = fs.existsSync(path.join(tmpDir, "yarn.lock"));
     const hasPnpmLock = fs.existsSync(path.join(tmpDir, "pnpm-lock.yaml"));
+    const hasNpmLock  = fs.existsSync(path.join(tmpDir, "package-lock.json"));
 
     let installCmd: [string, string[]];
     if (opts.installCommand) {
@@ -126,10 +127,45 @@ export async function runBuild(buildId: number, siteId: number, opts: {
       installCmd = ["npm", ["ci", "--prefer-offline"]];
     }
 
-    log(`[build] Installing dependencies (${installCmd[0]})...`);
-    await execFileAsync(installCmd[0], installCmd[1], {
-      cwd: tmpDir, timeout: 300_000, env: buildEnv,
-    });
+    // Build cache — hash the lockfile to get a cache key.
+    // If node_modules for this lockfile already exists on disk, skip install.
+    const CACHE_BASE = process.env.BUILD_CACHE_DIR ?? path.join(process.cwd(), ".build-cache");
+    const lockFile = hasPnpmLock ? "pnpm-lock.yaml" : hasYarnLock ? "yarn.lock" : hasNpmLock ? "package-lock.json" : null;
+    let cacheHit = false;
+    let cacheKey = "";
+
+    if (lockFile) {
+      const lockContent = fs.readFileSync(path.join(tmpDir, lockFile));
+      cacheKey = crypto.createHash("sha256").update(lockContent).digest("hex").slice(0, 16);
+      const cacheDir = path.join(CACHE_BASE, cacheKey, "node_modules");
+
+      if (fs.existsSync(cacheDir)) {
+        log(`[build] Cache hit (${cacheKey}) — skipping install`);
+        // Symlink cached node_modules into the build dir
+        fs.symlinkSync(cacheDir, path.join(tmpDir, "node_modules"), "dir");
+        cacheHit = true;
+      }
+    }
+
+    if (!cacheHit) {
+      log(`[build] Installing dependencies (${installCmd[0]})...`);
+      await execFileAsync(installCmd[0], installCmd[1], {
+        cwd: tmpDir, timeout: 300_000, env: buildEnv,
+      });
+
+      // Save node_modules to cache if we have a lockfile hash
+      if (lockFile && cacheKey) {
+        const saveDir = path.join(CACHE_BASE, cacheKey);
+        fs.mkdirSync(saveDir, { recursive: true });
+        const src = path.join(tmpDir, "node_modules");
+        if (fs.existsSync(src)) {
+          try {
+            await execFileAsync("cp", ["-r", src, saveDir], { timeout: 60_000 });
+            log(`[build] Cached node_modules → ${cacheKey}`);
+          } catch { /* cache save failure is non-fatal */ }
+        }
+      }
+    }
 
     // ── Step 3: Build ────────────────────────────────────────────────────────
     const [cmd, ...args] = opts.buildCommand.split(" ");
@@ -268,24 +304,42 @@ router.post("/sites/:id/builds", deployLimiter, asyncHandler(async (req: Request
     .where(and(eq(buildJobsTable.siteId, siteId), eq(buildJobsTable.status, "running")));
   if (running) throw AppError.conflict("A build is already running for this site");
 
+  const branch = parsed.data.gitBranch;
+  const isPreview = !["main", "master"].includes(branch);
+
+  // Preview URL: sanitise branch name → prefix--primary-domain
+  // e.g. branch "feat/my-feature" → "feat-my-feature--mysite.example.com"
+  let previewDomain: string | null = null;
+  if (isPreview) {
+    const safeBranch = branch.replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase().slice(0, 40);
+    previewDomain = `${safeBranch}--${site.domain}`;
+  }
+
   const [job] = await db.insert(buildJobsTable).values({
     siteId, triggeredBy: req.user.id,
-    gitUrl, gitBranch: parsed.data.gitBranch,
+    gitUrl, gitBranch: branch,
     buildCommand: parsed.data.buildCommand,
     outputDir: parsed.data.outputDir,
     status: "queued",
   }).returning();
 
-  // Run build asynchronously — respond immediately
-  res.status(202).json({ buildId: job.id, status: "queued", message: "Build started. Poll GET /api/sites/:id/builds/:buildId for status." });
+  res.status(202).json({
+    buildId: job.id, status: "queued",
+    isPreview,
+    previewDomain,
+    message: isPreview
+      ? `Preview build started. Will deploy to ${previewDomain}. Poll GET /api/sites/${siteId}/builds/${job.id} for status.`
+      : `Build started. Poll GET /api/sites/${siteId}/builds/${job.id} for status.`,
+  });
 
   runBuild(job.id, siteId, {
-    gitUrl, gitBranch: parsed.data.gitBranch,
+    gitUrl, gitBranch: branch,
     buildCommand: parsed.data.buildCommand,
     outputDir: parsed.data.outputDir,
-    environment: parsed.data.environment,
+    environment: isPreview ? "preview" : parsed.data.environment,
     userId: req.user.id, userEmail: req.user.email,
-    siteName: site.name, siteDomain: site.domain,
+    siteName: site.name,
+    siteDomain: previewDomain ?? site.domain,
   }).catch(err => logger.error({ err, buildId: job.id }, "[build] Unhandled error"));
 }));
 

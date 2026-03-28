@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, jsonb, pgEnum, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // Session table — required for OIDC auth. Do not drop.
 export const sessionsTable = pgTable(
@@ -13,8 +13,6 @@ export const sessionsTable = pgTable(
 );
 
 // Session table — required for OIDC auth. Do not drop.
-export const userPlanEnum = pgEnum("user_plan", ["free", "pro", "enterprise"]);
-
 export const usersTable = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
@@ -25,10 +23,11 @@ export const usersTable = pgTable("users", {
   isAdmin: integer("is_admin").notNull().default(0),
   /** Whether the user's email address has been verified. */
   emailVerified: integer("email_verified").notNull().default(0),
-  /** Per-user storage cap in MB (0 = use plan default). */
-  storageQuotaMb: integer("storage_quota_mb").notNull().default(0),
-  /** Subscription plan tier. */
-  plan: userPlanEnum("plan").notNull().default("free"),
+  /**
+   * Per-user storage cap in MB, set by node operator.
+   * 0 = no cap (only node-level capacity applies). NOT a paid tier.
+   */
+  storageCapMb: integer("storage_cap_mb").notNull().default(0),
   /** Timestamp when the user was suspended (null = active). */
   suspendedAt: timestamp("suspended_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

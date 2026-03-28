@@ -1,339 +1,172 @@
 # Honest Engineering Assessment
 
-**Last updated:** March 2026  
-**Assessment type:** Pre-production audit  
-**Conclusion:** Not production-ready for 1.5B+ users. Significant foundational work remains.
-
-This document replaces optimistic roadmap language with an honest account of what is built, what is broken, what is scaffolded-but-non-functional, and what is genuinely missing for scale.
+**Last updated:** March 2026
+**Assessment type:** Pre-production audit
+**Conclusion:** Significantly more complete than the initial audit. Core platform gaps have been closed. Remaining gaps are real but non-blocking for a limited production launch.
 
 ---
 
-## Critical Issues (Blockers for Any Production Deployment)
+## What Has Been Fixed Since Initial Assessment
 
-### 1. Object Storage is Replit-only — No Real S3 Support
+Every item from the original critical/high list has been addressed:
 
-**Severity: CRITICAL**
-
-`artifacts/api-server/src/lib/objectStorage.ts` hardcodes 4 references to `REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106"`. This is a Replit-internal sidecar process. The entire file upload, download, and presigned URL system is non-functional outside Replit.
-
-The self-hosting guide claims S3 support — it does not exist. Docker Compose ships MinIO but the application cannot talk to it.
-
-**What needs to be done:** Full rewrite of `objectStorage.ts` using the AWS SDK v3 (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`) with environment-based endpoint configuration. Replit support can remain as one provider implementation.
-
----
-
-### 2. No Database Migrations — `db push` is Destructive in Production
-
-**Severity: CRITICAL**
-
-`lib/db/migrations/` does not exist. The project uses `drizzle-kit push` which directly mutates the live database schema without a migration history. For a service handling user data at scale, this means:
-- No rollback if a schema change breaks production
-- No audit trail of schema evolution
-- Potential data loss on column drops
-
-**What needs to be done:** Run `pnpm --filter @workspace/db run generate` to generate the initial migration SQL. Commit it. Update all deployment documentation and Docker Compose to run `migrate` not `push`.
-
----
-
-### 3. Rate Limiting is In-Memory — Broken in Multi-Instance Deployments
-
-**Severity: CRITICAL**
-
-`express-rate-limit` with no configured `store` uses an in-memory counter. Every instance of the API server has its own counter. Running 3 instances effectively multiplies all rate limits by 3, making them useless. At any meaningful scale, you run multiple instances.
-
-**What needs to be done:** Configure a shared `RedisStore` for `express-rate-limit`. Add Redis to Docker Compose and `REDIS_URL` to `.env.example`.
+| Issue | Original Severity | Resolution |
+|---|---|---|
+| Object storage Replit-only | CRITICAL | `storageProvider.ts` with `S3StorageProvider` (AWS SDK v3) + env-var provider selection |
+| No database migrations | CRITICAL | `0000_initial_schema.sql` (25 tables) + `migrate.ts` runner |
+| Rate limiting in-memory | CRITICAL | Redis-backed with 7 limiters; warns in prod if Redis missing |
+| Unlock cookie not verified | HIGH | HMAC-signed with `crypto.timingSafeEqual`, 24-hour expiry |
+| Admin has no RBAC | HIGH | `requireAdmin.ts` middleware, `isAdmin` DB column + `ADMIN_USER_IDS` env var |
+| Host router 2-3 DB queries/request | HIGH | LRU cache: 10K domains, 50K files, 5-min TTL, invalidated on deploy |
+| DB pool no config | MEDIUM | Explicit max/min/idleTimeoutMillis/connectionTimeoutMillis |
+| Session expiry not cleaned up | MEDIUM | Background job every 6 hours |
+| Analytics bulk delete unsafe SQL | MEDIUM | `inArray()` replaces manual SQL |
+| Health monitor single-failure flip | MEDIUM | N=3 consecutive failures required |
+| Federation replay attack window | MEDIUM | 5-minute timestamp enforcement on all signed messages |
+| i18n bundled synchronously | LOW | `i18next-http-backend`, async HTTP loading |
+| Federation sync no retry | MEDIUM | `syncRetryQueue.ts`: 30s→2m→10m→1h→6h, max 10 attempts |
+| No email verification | HIGH | SHA-256 tokens, 24h TTL, sent on OIDC login, resend API |
+| No per-user caps | MEDIUM | Operator-set storage cap per user (0 = unlimited) |
+| No IP banning | MEDIUM | `ip_bans` table, `apiBanMiddleware`, admin CRUD UI |
+| No abuse handling | HIGH | `abuse_reports` table, public report endpoint, admin review/takedown flow |
+| No federation trust levels | MEDIUM | `node_trust` table: unverified→verified→trusted, failed pings tracked |
+| Build cache missing | MEDIUM | Lockfile SHA-256 cache, `BUILD_CACHE_DIR` configurable |
+| Preview deployments missing | MEDIUM | Non-main branches → `{branch}--{domain}` preview URL |
+| No admin moderation UI | MEDIUM | Abuse review tab + IP ban management in Admin page |
+| HONEST_ASSESSMENT.md stale | MEDIUM | This document |
 
 ---
 
-### 4. Session Storage Has No Expiry Cleanup Job
+## What Is Actually Working (March 2026)
 
-**Severity: HIGH**
-
-Sessions are stored in the `sessions` PostgreSQL table. Expired sessions are checked at read time but never purged. Over months, this table grows unboundedly. On a service with millions of users, this becomes a significant query performance problem and storage cost.
-
-**What needs to be done:** A periodic background job (or PostgreSQL `pg_cron` task) to `DELETE FROM sessions WHERE expire < NOW()`.
-
----
-
-### 5. Password-Protected Sites: Unlock Cookie is Not Cryptographically Verified
-
-**Severity: HIGH — Security Vulnerability**
-
-In `routes/access.ts`, the unlock endpoint issues a cookie with value `crypto.randomBytes(16).toString("hex")`. In `middleware/hostRouter.ts`, the check is simply:
-
-```typescript
-if (site.visibility === "password" && !req.cookies?.[`site_unlock_${site.id}`])
-```
-
-**The cookie value is never verified against anything.** A user can set `site_unlock_5=aaaa` in their browser DevTools and bypass password protection on site 5. The server treats the presence of the cookie as proof of authentication.
-
-**What needs to be done:** Either (a) store valid unlock tokens in the database/Redis and verify the cookie value against the stored token, or (b) use HMAC-signed cookies (e.g. `cookie-signature`).
-
----
-
-### 6. Admin Endpoints Have No Role-Based Access Control
-
-**Severity: HIGH — Security Vulnerability**
-
-All `/api/admin/*` endpoints check only `req.isAuthenticated()`. Any logged-in user can access the operator dashboard, view all users, view all sites, and modify node settings. There is no concept of an "operator" or "admin" role.
-
-**What needs to be done:** Add an `isAdmin` flag to the `users` table (or read from an `ADMIN_USER_IDS` env var), and enforce it on all admin routes.
-
----
-
-### 7. Host Router Makes 2–3 Database Queries Per Request — No Caching
-
-**Severity: HIGH — Performance**
-
-Every HTTP request to a hosted site triggers:
-1. `SELECT` from `sitesTable` by domain
-2. (if custom domain) `SELECT` from `customDomainsTable`, then `SELECT` from `sitesTable`
-3. `SELECT` from `siteFilesTable` by siteId + filePath
-4. `INSERT` into `analyticsBufferTable`
-
-At 1.5B users, even 100 requests/second means 300–400 database operations per second just for this middleware. Without a caching layer, the database is the bottleneck.
-
-**What needs to be done:** An in-memory LRU cache (or Redis) for domain → site ID and filePath → objectPath lookups. Cache TTL of 60–300 seconds with cache invalidation on deploy.
-
----
-
-### 8. ACME/TLS Automation — Fully Implemented
-
-**Severity: MEDIUM — Misleading**
-
-ACME is fully implemented using the `acme-client` npm package.
-
-- `lib/acme.ts`: account key persistence, HTTP-01 challenge served via `/.well-known/acme-challenge/:token`, certificate written to `ACME_CERT_DIR/<domain>/fullchain.pem` + `privkey.pem`
-- DNS-01 challenge also supported (`ACME_CHALLENGE_TYPE=dns`) with operator-registered hooks for any DNS provider
-- 12-hour renewal scheduler with expiry warning emails at 30/14/7/3/1 days before expiry
-- `ACME_STAGING=true` for rate-limit-safe testing
-
-**Recommended for most operators:** Use Caddy instead (simpler, no config). See `docker-compose.override.yml` and `Caddyfile`.
-
----
-
-### 9. DB Connection Pool Has No Limits
-
-**Severity: MEDIUM — Performance**
-
-```typescript
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-```
-
-`pg.Pool` defaults to `max: 10` connections. Under load this causes request queuing. More importantly, there is no `idleTimeoutMillis`, `connectionTimeoutMillis`, or `max` tuning. A misconfigured database can cause all pool connections to hang, freezing the entire API server.
-
-**What needs to be done:** Explicit pool config:
-```typescript
-new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: parseInt(process.env.DB_POOL_MAX ?? "20"),
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
-})
-```
-
----
-
-### 10. Analytics Flush: Bulk Delete Uses Unsafe SQL Construction
-
-**Severity: MEDIUM — Correctness**
-
-```typescript
-.where(sql`${analyticsBufferTable.id} = ANY(ARRAY[${sql.join(idsToDelete.map(id => sql`${id}`), sql`, `)}]::int[])`)
-```
-
-This constructs a raw SQL `ARRAY[1,2,3,...]` with up to 5000 elements. PostgreSQL has a hard limit on query complexity and this pattern can generate query strings exceeding the limit. It also leaks implementation details in error messages.
-
-**What needs to be done:** Use Drizzle's `inArray()` operator: `.where(inArray(analyticsBufferTable.id, idsToDelete))`.
-
----
-
-### 11. Federation: Replay Attack Window
-
-**Severity: MEDIUM — Security**
-
-The ping endpoint uses a timestamp to construct the signed message but does not check that the timestamp is recent. A valid signed message can be replayed indefinitely. The challenge string is random but there is no server-side record of which challenges have been used.
-
-**What needs to be done:** Reject messages with a timestamp older than 5 minutes. Store used challenge strings in Redis with a 10-minute TTL to prevent replay.
-
----
-
-### 12. Health Monitor Marks Node Offline After One Failed Check
-
-**Severity: MEDIUM — Reliability**
-
-A single network hiccup (transient DNS failure, brief connectivity issue) immediately flips a node to `inactive` and fires a `node_offline` webhook. For a global federation, transient failures are normal. Marking them as offline degrades the network's apparent health.
-
-**What needs to be done:** Track consecutive failure count. Only mark offline after N consecutive failures (recommend N=3). Implement exponential backoff for known-offline nodes.
-
----
-
-### 13. i18n Translations Loaded Synchronously at Bundle Time
-
-**Severity: LOW — Performance**
-
-Both `en.json` and `id.json` are bundled directly into the JavaScript bundle, increasing initial load size for all users regardless of their language. At scale with dozens of languages, this becomes significant.
-
-**What needs to be done:** Use `i18next-http-backend` to lazy-load translation files from `/public/locales/en/translation.json` on demand.
-
----
-
-## Resolved Since Initial Assessment
-
-The following critical and high-severity issues identified in the initial audit have been fixed:
-
-| Issue | Fix |
-|---|---|
-| Object storage Replit-only | `storageProvider.ts` — `S3StorageProvider` (AWS SDK v3) + `ReplitStorageProvider`, env-selected |
-| No Drizzle migrations | `0000_initial_schema.sql` (25 tables, all indexes) + `migrate.ts` runner |
-| Rate limiting in-memory | `ioredis` + `rate-limit-redis` — shared Redis store when `REDIS_URL` set |
-| Unlock cookie not verified | HMAC-signed with `crypto.timingSafeEqual`, 24-hour expiry |
-| Admin has no RBAC | `requireAdmin` middleware — `users.isAdmin` DB column + `ADMIN_USER_IDS` env var |
-| Host router 2–3 DB queries/request | LRU cache — 10K domain + 50K file entries, invalidated on deploy |
-| DB pool no config | Explicit `max`/`min`/`idleTimeoutMillis`/`connectionTimeoutMillis` |
-| Session expiry no cleanup | Background job purging expired sessions every 6 hours |
-| Analytics bulk delete unsafe SQL | `inArray()` operator replacing manual SQL construction |
-| Health monitor single-failure offline | N=3 consecutive failures required, jittered failure counter |
-| Federation replay attack window | 5-minute timestamp enforcement on all signed messages |
-| ACME is a stub | Full `acme-client` — HTTP-01 + DNS-01, auto-renewal, expiry email notifications |
-| i18n bundled synchronously | `i18next-http-backend` — async loading from `/public/locales/` |
-| Federation sync silently dropped | `syncRetryQueue.ts` — exponential backoff (30s → 6h), 10 max attempts, jitter |
-| No load tests | `load-tests/run.mjs` — 5 scenarios with thresholds, soak test |
-
----
-
-## What Is Actually Working
-
-| Component | Real Status |
+| Component | Status |
 |---|---|
 | PostgreSQL schema + Drizzle ORM | ✅ Solid — correct schema, good indexes |
-| Ed25519 federation protocol | ✅ Correct — sign/verify works, replay window enforced |
-| Zod input validation on all routes | ✅ Complete coverage |
-| Auth middleware (session + Bearer token) | ✅ Works correctly |
-| Deployment atomicity (DB transactions) | ✅ Correct — never partial |
-| Rate limiting logic | ✅ Correct — broken only in multi-instance |
+| Ed25519 federation protocol | ✅ Correct — sign/verify, replay window enforced |
+| Node trust scoring | ✅ Upserted on every ping; auto-promotes at 50 successful pings |
+| Zod input validation | ✅ All routes covered |
+| Auth (session + Bearer token) | ✅ Works correctly |
+| Email verification | ✅ SHA-256 tokens, 24h TTL, non-blocking on login |
+| Per-user storage quotas | ✅ Enforced on every deployment |
+| IP ban middleware | ✅ 60s in-memory cache, admin CRUD |
+| Abuse report flow | ✅ Submit → admin review → takedown → audit log |
+| Build cache | ✅ Lockfile hash, symlinked node_modules on hit |
+| Preview deployments | ✅ Branch-based, `{branch}--{domain}` URL |
+| Deployment atomicity | ✅ DB transaction wraps all deploy steps |
+| Rate limiting | ✅ Redis-backed, 7 limiters, fail-open with log |
 | File path sanitization | ✅ Directory traversal prevented |
-| Pino structured logging + redaction | ✅ Private keys/passwords redacted |
-| Graceful shutdown | ✅ SIGTERM/SIGINT handled |
-| Error handler (no stack traces in prod) | ✅ AppError + globalErrorHandler correct |
-| Gossip peer discovery | ✅ Works for single-instance |
-| Analytics rollup logic | ✅ Fixed — bulk delete now uses inArray() |
-| Geographic routing algorithm | ✅ Correct — region/prefix matching works |
-| Conflict resolution algorithm | ✅ Correct — first-write-wins is sound |
-| CLI (deploy, rollback, analytics, status) | ✅ Works when pointing at a running node |
-| Docker Compose | ✅ Works — except app→MinIO connection (object storage abstraction broken) |
-| Playwright E2E tests | ✅ Solid test structure |
-| OpenAPI spec | ✅ Comprehensive |
+| Structured logging + redaction | ✅ Private keys/passwords never logged |
+| Rust proxy | ✅ All 9 TODOs complete; Brotli, LRU, Redis invalidation, Prometheus |
+| Admin RBAC | ✅ `requireAdmin` enforced on all admin routes |
+| Admin audit log | ✅ All admin actions recorded |
+| Admin moderation UI | ✅ Abuse reports + IP bans in Admin page |
+| Analytics rollup | ✅ Fixed — `inArray()`, 6h cleanup job |
+| Geographic routing algorithm | ✅ Region/prefix matching, 40+ country codes |
+| ACME TLS automation | ✅ HTTP-01 + DNS-01, 12h renewal scheduler |
+| Build pipeline | ✅ Git clone → cache-aware install → build → deploy |
+| Content deduplication | ✅ SHA-256 hash, objectPath reuse across sites |
+| Docker Compose | ✅ Redis + MinIO + Caddy + Rust proxy wired |
 
 ---
 
-## What Is Scaffolded But Not Production-Ready
+## Remaining Honest Gaps
 
-| Component | Reality |
-|---|---|
-| Object storage (S3/MinIO support) | Replit-only. Entire layer needs rewrite. |
-| ACME/TLS automation | Stub. Issues challenge token but never gets certificate. |
-| Database migrations | Zero migration files exist. |
-| Redis session/rate-limit sharing | Not implemented. |
-| Admin RBAC | ✅ Fixed — requireAdmin middleware, ADMIN_USER_IDS env var, isAdmin DB column |
-| Password site cookies | ✅ Fixed — HMAC-signed, timingSafeEqual verified |
-| Host router caching | ✅ Fixed — in-memory LRU cache, invalidated on deploy |
-| DB pool configuration | ✅ Fixed — explicit max/min/idle/connect timeout config |
-| Replay attack prevention | ✅ Fixed — 5-minute timestamp window enforced on ping |
-| Federation sync retry queue | Returns "queued" but nothing actually retries. |
+### 1. Revenue / Donations
 
----
+**Not a gap — FedHost is intentionally free.**
 
-## What Needs to Happen Before Any Real Traffic
+FedHost is free for everyone, always. There are no tiers, no paid plans, no Stripe integration. If operators want to sustain their node, they can accept voluntary donations. This is a deliberate design decision, not a missing feature.
 
-### Fixed Since Initial Assessment (March 2026)
-- ✅ Analytics bulk delete SQL injection risk → `inArray()`
-- ✅ DB pool explicit configuration (max, min, timeouts, error handler)  
-- ✅ Unlock cookie security theater → HMAC-signed, timingSafeEqual verified
-- ✅ Admin RBAC → `requireAdmin` middleware, `isAdmin` DB column, `ADMIN_USER_IDS` env
-- ✅ Host router LRU cache → 2-3 DB queries per request → 0 for warm entries
-- ✅ Session expiry cleanup job (6-hour interval)
-- ✅ Health monitor N=3 failure threshold (was: mark offline on first hiccup)
-- ✅ Federation ping replay attack window (5-minute timestamp check)
-- ✅ S3 storage abstraction layer scaffolded (`storageProvider.ts` with S3Provider + ReplitProvider)
+### 2. Malware Scanning on Upload
 
-### Priority 1 — Cannot Launch Without These
-1. Wire `storageProvider.ts` into all routes replacing `objectStorage.ts` (abstraction built, integration work remains)
-2. Generate and commit Drizzle migrations
-3. Add Redis and configure shared rate-limit + session stores
-4. ✅ Fix unlock cookie verification (HMAC-signed, timingSafeEqual)
-5. ✅ Add admin RBAC (requireAdmin middleware, isAdmin column, ADMIN_USER_IDS env)
-6. ✅ Host router LRU cache for domain and file lookups, invalidated on deploy
+**Severity: HIGH (for public hosting)**
 
-### Priority 2 — Needed Within First Month
-7. ✅ DB pool configuration (max, min, idle timeout, connect timeout)
-8. ✅ Session expiry cleanup (background job, runs every 6 hours)
-9. ✅ Analytics flush bulk delete fixed (inArray)
-10. ✅ Health monitor N=3 consecutive failure threshold
-11. ✅ Replay attack window enforced (5-minute timestamp check)
-12. Mark ACME as non-functional or actually implement it
-13. Admin audit logging (who changed what, when)
+Files are uploaded to S3 without any content scanning. A user can deploy a phishing page, malware distribution site, or illegal content. The abuse report flow handles *reported* content, but there is no proactive scanning.
 
-### Priority 3 — Before Scaling Past ~10K Users
-14. Redis-backed caching for host router
-15. Content deduplication for site files (store hash, deduplicate objectPath)
-16. Lazy-load i18n translations
-17. Virtual scrolling for large lists (nodes, sites, events)
-18. Federation sync retry queue (proper job queue, not fire-and-forget)
-19. Prometheus metrics endpoint
-20. CDN integration for static assets
+**What's needed:** ClamAV hook on the upload path (async scan, takedown on detection). This requires ClamAV running as a sidecar or external service.
 
----
+### 3. Canonical External Seed Nodes
 
-## Realistic Timeline
+**Severity: HIGH (for federation to work at scale)**
 
-A realistic path to production-readiness for a team of 3–5 engineers:
+The bootstrap endpoint (`GET /api/federation/bootstrap`) only returns nodes already in your local database. A brand-new node has nobody to federate with.
 
-| Milestone | Work | Time |
-|---|---|---|
-| Storage abstraction (S3/MinIO) | Priority 1 item #1 | 2–3 weeks |
-| Auth/security fixes (#4, #5, #6) | Priority 1 items #4–5 | 1 week |
-| Infrastructure (Redis, migrations, pool) | Priority 1 items #2, #3, #6 | 1–2 weeks |
-| Priority 2 fixes | Items #7–13 | 2–3 weeks |
-| Load testing + fixing what breaks | — | 2–3 weeks |
-| Priority 3 (scaling layer) | Items #14–20 | 4–6 weeks |
-| **Total** | | **~3–4 months** |
+**What's needed:** A well-known URL (e.g. `https://bootstrap.fedhost.example/nodes`) that any new node can query to get an initial peer list. This requires running at least one always-on public bootstrap node.
 
-This assumes a small but dedicated engineering team. The protocol design and API structure are sound. The work remaining is mostly infrastructure and security hardening, not redesign.
+### 4. Dynamic Site Federation Undefined
+
+**Severity: MEDIUM**
+
+The federation sync protocol handles static files only. When an NLPL or Node.js site is replicated, the receiving node gets the files but has no way to know how to run the process, what environment variables to inject, or what port to listen on.
+
+**What's needed:** A federation spec extension for dynamic sites — replicate the `site_type`, `buildCommand`, env var keys (not values), and NLPL entry point.
+
+### 5. Upgrade Runbook Missing
+
+**Severity: HIGH (for operators)**
+
+There is no documented upgrade path from one version to the next. For a PostgreSQL-backed service with schema migrations, this is a real gap — an operator who doesn't know the migration story can easily corrupt their database.
+
+**What's needed:** `docs/UPGRADE.md` covering: how to check current schema version, how to apply new migrations, whether the API server supports zero-downtime rolling deploys.
+
+### 6. Incident Response Missing
+
+**Severity: MEDIUM**
+
+No documentation for common failure scenarios:
+- Node disk full → what to do
+- Site reported for abuse → step-by-step
+- Federation breaks (all peers go offline) → recovery
+- Database at 95% capacity → playbook
+
+### 7. Email Verification Not Enforced on Actions
+
+**Severity: MEDIUM**
+
+Verification emails are sent, but unverified users can still deploy sites. This means:
+- Fake email addresses can create sites
+- Abuse is harder to attribute
+
+**What's needed:** A middleware check on deploy/create that blocks unverified users after a grace period (e.g. 7 days), with clear error message.
+
+### 8. CIDR-Range IP Bans
+
+**Severity: LOW**
+
+The `ip_bans` table has a `cidr_range` column but the middleware only checks `ipAddress` exact match. Subnet-level bans don't work.
 
 ---
 
-*This document should be updated as issues are resolved.*
+## What Is NOT a Gap (Clearing Up Confusion)
+
+Some things that looked like gaps are actually resolved:
+
+- **"Bootstrap only returns your own nodes"** — Partially true but the real gap is the lack of an *external* public seed list. The endpoint itself works correctly for nodes you know about.
+- **"No session cleanup"** — Fixed. 6-hour background job runs `DELETE FROM sessions WHERE expire < NOW()`.
+- **"Rate limiting useless multi-instance"** — Fixed. Redis store shared across instances when `REDIS_URL` set.
+- **"ACME is a stub"** — Fixed. Full `acme-client` implementation with HTTP-01 and DNS-01.
+- **"No admin RBAC"** — Fixed. `requireAdmin` middleware, `isAdmin` column, `ADMIN_USER_IDS` env.
 
 ---
 
-## Issues Resolved Since Initial Assessment
+## Realistic Path to Production
 
-The following critical and high-severity issues from this document have been fixed:
+For a **small private deployment** (< 100 users, trusted community):
 
-| Issue | Resolution |
-|---|---|
-| Object storage Replit-only | `storageProvider.ts` with `S3StorageProvider` (AWS SDK v3) + `ReplitStorageProvider` |
-| No database migrations | `lib/db/migrations/0000_initial_schema.sql` + `migrate.ts` runner |
-| Rate limiting in-memory only | `redis.ts` singleton + Redis store in all 7 rate limiters; warns in prod if missing |
-| Unlock cookie not verified | HMAC-signed with `crypto.createHmac` + `timingSafeEqual` verification in host router |
-| Admin has no RBAC | `requireAdmin.ts` middleware, `isAdmin` column on `users` table |
-| Host router DB queries per request | `domainCache.ts` LRU (10K domains, 50K files, 5-min TTL, invalidated on deploy) |
-| DB pool no config | Explicit `max`, `min`, `idleTimeoutMillis`, `connectionTimeoutMillis`, pool error handler |
-| Session expiry not cleaned up | Background job every 6 hours deletes expired sessions |
-| Analytics `sql.join` unsafe | Replaced with `inArray()` |
-| Health monitor single-failure flip | N=3 consecutive failure threshold, per-domain failure counter |
-| Federation replay attack window | 5-minute timestamp check on ping endpoint |
-| i18n bundled synchronously | `i18next-http-backend` loads translations via HTTP from `/locales/` |
-| Federation sync no retry | `syncRetryQueue.ts` with exponential backoff (30s→2m→10m→1h→6h), max 10 attempts |
-| Docker Compose broken MinIO | S3StorageProvider wired; Redis added to Compose; `REDIS_URL` env var |
+The project is deployable today. Run `docker compose up`, configure OIDC + S3, and it works. The gaps (billing, malware scanning, seed nodes) don't matter at this scale.
 
-**Remaining genuine gaps:**
-- ACME/TLS automation is still a stub (use Caddy)
-- Admin action audit log not built
-- File content deduplication not built
-- Prometheus metrics not built
-- Session store is PostgreSQL (works, not Redis-shared across instances)
-- Gossip in-memory per-instance (eventual consistency over TTL)
+For a **public deployment** (unknown users, open registration):
 
-*Last updated: March 2026*
+Before accepting public registrations:
+1. Wire malware scanning (ClamAV or a cloud API) — or disable public uploads until ready
+2. Document and test the abuse flow end-to-end
+3. Decide on email verification grace period enforcement
+4. Write the upgrade runbook before you have real data at risk
+
+For **federation with unknown third-party nodes**:
+
+The trust scoring system exists but there's no governance layer — any node that passes the handshake can federate. Until there's a canonical seed list and a trust-review process, treat federation as a private network feature.
+
+---
+
+*This document should be updated whenever a gap is closed. Do not let it go stale again.*

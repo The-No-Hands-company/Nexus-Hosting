@@ -11,7 +11,7 @@ import {
   Server, Users, Globe, Activity, HardDrive, Cpu, MemoryStick,
   TrendingUp, Settings, LogIn, RefreshCw, Zap, Radio, Loader2,
   ClipboardList, HeartPulse, CheckCircle2, AlertTriangle, XCircle,
-  ExternalLink,
+  ExternalLink, ShieldAlert, Flag, Ban,
 } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
@@ -343,6 +343,169 @@ export default function AdminPage() {
 // ── Admin Users tab ───────────────────────────────────────────────────────────
 
 interface AdminUser { id: string; email: string; firstName: string | null; lastName: string | null; createdAt: string; siteCount: number; }
+
+// ── Moderation Tab ────────────────────────────────────────────────────────────
+
+const ABUSE_STATUSES = ["pending","under_review","resolved_removed","resolved_no_action","escalated"] as const;
+const STATUS_COLORS: Record<string, string> = {
+  pending:              "text-amber-400 border-amber-400/30 bg-amber-400/10",
+  under_review:         "text-blue-400 border-blue-400/30 bg-blue-400/10",
+  resolved_removed:     "text-red-400 border-red-400/30 bg-red-400/10",
+  resolved_no_action:   "text-muted-foreground border-white/10",
+  escalated:            "text-purple-400 border-purple-400/30 bg-purple-400/10",
+};
+
+function ModerationTab() {
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const qc = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState("pending");
+  const [banIp, setBanIp] = useState("");
+  const [banReason, setBanReason] = useState("");
+
+  const { data: reports } = useQuery({
+    queryKey: ["abuse-reports", statusFilter],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/abuse/reports?status=${statusFilter}`, { credentials: "include" });
+      return r.json() as Promise<{ data: any[] }>;
+    },
+  });
+
+  const { data: bans } = useQuery({
+    queryKey: ["ip-bans"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/admin/ip-bans`, { credentials: "include" });
+      return r.json() as Promise<{ data: any[] }>;
+    },
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      await fetch(`${BASE}/api/abuse/reports/${id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["abuse-reports"] }),
+  });
+
+  const takedownMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`${BASE}/api/abuse/reports/${id}/takedown`, { method: "POST", credentials: "include" });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["abuse-reports"] });
+      qc.invalidateQueries({ queryKey: ["sites"] });
+    },
+  });
+
+  const banMutation = useMutation({
+    mutationFn: async () => {
+      await fetch(`${BASE}/api/admin/ip-bans`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ipAddress: banIp.trim(), reason: banReason, scope: "all" }),
+      });
+    },
+    onSuccess: () => { setBanIp(""); setBanReason(""); qc.invalidateQueries({ queryKey: ["ip-bans"] }); },
+  });
+
+  const unbanMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`${BASE}/api/admin/ip-bans/${id}`, { method: "DELETE", credentials: "include" });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ip-bans"] }),
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Abuse Reports */}
+      <Card className="border-white/5">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-white text-base flex items-center gap-2">
+            <Flag className="w-4 h-4 text-primary" />Abuse Reports
+          </CardTitle>
+          <div className="flex gap-1 flex-wrap mt-2">
+            {ABUSE_STATUSES.map(s => (
+              <button key={s} onClick={() => setStatusFilter(s)}
+                className={`px-2.5 py-1 rounded-lg text-xs border transition-colors ${
+                  statusFilter === s ? "bg-primary/20 border-primary/40 text-primary" : "border-white/8 text-muted-foreground hover:text-white"
+                }`}>
+                {s.replace(/_/g, " ")}
+              </button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!reports?.data?.length ? (
+            <p className="text-muted-foreground text-sm">No {statusFilter.replace(/_/g, " ")} reports.</p>
+          ) : (
+            <div className="space-y-2">
+              {reports.data.map((r: any) => (
+                <div key={r.id} className="p-3 bg-muted/10 border border-white/5 rounded-xl text-sm space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-white font-mono font-semibold">{r.siteDomain}</span>
+                      <span className={`ml-2 px-2 py-0.5 rounded-full text-xs border ${STATUS_COLORS[r.status] ?? ""}`}>{r.reason}</span>
+                    </div>
+                    <span className="text-muted-foreground text-xs shrink-0">{new Date(r.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  {r.description && <p className="text-muted-foreground text-xs">{r.description}</p>}
+                  <div className="flex gap-2 flex-wrap">
+                    <Button size="sm" variant="outline" className="h-7 text-xs border-white/10"
+                      onClick={() => reviewMutation.mutate({ id: r.id, status: "under_review" })}>
+                      Mark reviewing
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs border-white/10"
+                      onClick={() => reviewMutation.mutate({ id: r.id, status: "resolved_no_action" })}>
+                      No action
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
+                      onClick={() => takedownMutation.mutate(r.id)} disabled={takedownMutation.isPending}>
+                      Takedown site
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* IP Bans */}
+      <Card className="border-white/5">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-white text-base flex items-center gap-2">
+            <Ban className="w-4 h-4 text-primary" />IP Bans
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <input value={banIp} onChange={e => setBanIp(e.target.value)} placeholder="IP address (e.g. 1.2.3.4)"
+              className="flex-1 bg-muted/20 border border-white/8 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/40" />
+            <input value={banReason} onChange={e => setBanReason(e.target.value)} placeholder="Reason (optional)"
+              className="flex-1 bg-muted/20 border border-white/8 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/40" />
+            <Button size="sm" onClick={() => banMutation.mutate()} disabled={!banIp || banMutation.isPending}
+              className="shrink-0">Ban IP</Button>
+          </div>
+          {bans?.data?.length ? (
+            <div className="space-y-1">
+              {bans.data.map((b: any) => (
+                <div key={b.id} className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/10 border border-white/5 rounded-lg text-sm">
+                  <span className="font-mono text-white">{b.ipAddress}</span>
+                  <span className="text-muted-foreground text-xs flex-1 truncate ml-2">{b.reason ?? "—"}</span>
+                  <span className="text-xs border border-white/10 px-1.5 py-0.5 rounded">{b.scope}</span>
+                  <Button size="sm" variant="ghost" className="h-6 text-xs text-red-400 hover:text-red-300"
+                    onClick={() => unbanMutation.mutate(b.id)}>Unban</Button>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-muted-foreground text-sm">No active IP bans.</p>}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 function AdminUsersTab() {
   const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -729,6 +892,9 @@ function SiteHealthTab() {
           <TabsTrigger value="sites" className="gap-1.5">
             <Globe className="w-3.5 h-3.5" />All Sites
           </TabsTrigger>
+          <TabsTrigger value="moderation" className="gap-1.5">
+            <ShieldAlert className="w-3.5 h-3.5" />Moderation
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="audit" className="mt-4">
           <AuditLogTab />
@@ -744,6 +910,9 @@ function SiteHealthTab() {
         </TabsContent>
         <TabsContent value="sites" className="mt-4">
           <AdminSitesTab />
+        </TabsContent>
+        <TabsContent value="moderation" className="mt-4">
+          <ModerationTab />
         </TabsContent>
       </Tabs>
     </div>
