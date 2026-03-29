@@ -1,12 +1,18 @@
-# Contributing
+# Contributing to Nexus Hosting
 
-Thank you for considering a contribution to Nexus Hosting. This document covers how to set up a local development environment, the code style we follow, and the process for submitting changes.
+Nexus Hosting is a solo-developer project and contributions are genuinely welcome — from bug reports to running a federation node to code changes. There's no bureaucracy here.
+
+---
+
+## The most valuable thing you can do right now
+
+**Run a node.** The federation protocol is built and working, but the network only has one node. If you spin up a node (even a cheap VPS or a Raspberry Pi), connect it to the federation, and deploy a test site — you will immediately surface more real bugs than any amount of code review. Open an issue with what you find, or DM to get peered.
 
 ---
 
 ## Code of Conduct
 
-Be respectful and constructive. Harassment of any kind will not be tolerated. We are here to build software together.
+Be respectful and constructive. That's it.
 
 ---
 
@@ -26,38 +32,31 @@ cd Nexus-Hosting
 pnpm install
 ```
 
-### 3. Set up environment variables
-
-Copy the example and fill in your values:
+### 3. Set up environment
 
 ```bash
 cp .env.example .env
+# Minimum required for development:
+# DATABASE_URL, ISSUER_URL, OIDC_CLIENT_ID, COOKIE_SECRET, PUBLIC_DOMAIN
+# S3 creds: OBJECT_STORAGE_ENDPOINT + ACCESS_KEY + SECRET_KEY + BUCKET
 ```
 
-Required variables:
-
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/nexushosting
-DEFAULT_OBJECT_STORAGE_BUCKET_ID=your-bucket-id
-PRIVATE_OBJECT_DIR=private
-PUBLIC_OBJECT_SEARCH_PATHS=public
-NODE_ENV=development
-```
-
-### 4. Initialise the database
+### 4. Run migrations
 
 ```bash
-pnpm --filter @workspace/db run push
+pnpm --filter @workspace/db run migrate
 ```
 
-### 5. Start development servers
+### 5. Start dev servers
 
 ```bash
-# API server (port 8080)
-pnpm --filter @workspace/api-server run dev
+pnpm run dev  # API on :8080, frontend on :25231
+```
 
-# Frontend (port 25231)
-pnpm --filter @workspace/nexus-hosting run dev
+Docker Compose is the fastest path if you have Docker:
+
+```bash
+docker compose up  # brings up Postgres, Redis, MinIO, and the app
 ```
 
 ---
@@ -67,13 +66,13 @@ pnpm --filter @workspace/nexus-hosting run dev
 ```
 artifacts/api-server/     Express 5 API + federation node
 artifacts/nexus-hosting/  React + Vite frontend
+artifacts/cli/            nh CLI (published as @nexushosting/cli)
 lib/db/                   Drizzle ORM schema + migrations
-lib/api-spec/             OpenAPI 3.1 specification (source of truth)
-lib/api-zod/              Auto-generated Zod validators (do not edit)
-lib/api-client-react/     Auto-generated React Query hooks (do not edit)
-lib/integrations/         OIDC Auth + Object Storage wrappers
-docs/                     Architecture, API, and other documentation
-scripts/                  Utility and seed scripts
+lib/api-spec/             OpenAPI 3.1 spec (source of truth for all routes)
+crates/nexus-proxy/       Rust static site proxy (Brotli, LRU, Redis)
+docs/                     SELF_HOSTING, UPGRADE, INCIDENT_RESPONSE, etc.
+monitoring/               Prometheus config + Grafana dashboards
+load-tests/               autocannon load test suite
 ```
 
 ---
@@ -82,47 +81,27 @@ scripts/                  Utility and seed scripts
 
 ### Branches
 
-- `main` — production-ready code; protected
+- `main` — deployable at all times
 - `feat/<name>` — new features
 - `fix/<name>` — bug fixes
 - `chore/<name>` — tooling, deps, docs
 
-### Making changes
+### Before opening a PR
 
-1. Create a branch from `main`:
-   ```bash
-   git checkout -b feat/my-feature
-   ```
+```bash
+# Type-check (required)
+pnpm run typecheck
 
-2. Make your changes following the code style guidelines below.
+# Unit tests
+cd artifacts/api-server && npx vitest run tests/unit/
 
-3. Type-check from the root (required — checks cross-package imports):
-   ```bash
-   pnpm run typecheck
-   ```
-
-4. Test your changes manually (automated test suite coming soon).
-
-5. Commit with a clear message:
-   ```bash
-   git commit -m "feat: add per-site bandwidth tracking"
-   ```
-
-6. Push and open a pull request against `main`.
-
-### Commit message format
-
-We follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-<type>: <short description>
-
-[optional body]
-
-[optional footer]
+# Check your route is in the OpenAPI spec
+grep "your-new-route" lib/api-spec/openapi.yaml
 ```
 
-Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`
+### Commit messages
+
+[Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`
 
 ---
 
@@ -130,81 +109,42 @@ Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`
 
 ### TypeScript
 
-- Strict mode enabled — no `any`, no implicit returns
-- Prefer `const`; use `let` only when reassignment is necessary
-- Use named exports over default exports in library code
-- All route handlers must be wrapped in `asyncHandler()` — no bare `async` handlers
-- Throw `AppError` (not raw `Error`) from route handlers; the global error handler will serialise it correctly
-- Never `console.log` in production code — use the `logger` from `lib/logger.ts`
+- All route handlers wrapped in `asyncHandler()` — no bare `async` handlers
+- Throw `AppError` from routes: `AppError.notFound()`, `AppError.unauthorized()`, `AppError.badRequest("msg", "CODE")`
+- Use the `logger` from `lib/logger.ts` — no `console.log` in production code
+- Drizzle query builder for all DB queries — no raw SQL strings unless unavoidable
+- Wrap multi-step DB operations in `db.transaction()`
 
-### Express routes
+### New routes
 
-```ts
-// Good
-router.get("/things", asyncHandler(async (req, res) => {
-  const things = await db.select().from(thingsTable);
-  res.json(things);
-}));
+1. Add the route handler in `artifacts/api-server/src/routes/`
+2. Register it in `artifacts/api-server/src/routes/index.ts`
+3. Add the path to `lib/api-spec/openapi.yaml`
+4. Add a unit test in `artifacts/api-server/tests/unit/` if the logic is non-trivial
 
-// Bad — unhandled promise rejection will crash the process
-router.get("/things", async (req, res) => {
-  const things = await db.select().from(thingsTable);
-  res.json(things);
-});
-```
+### Schema changes
 
-### Error handling
-
-```ts
-// Throw typed errors — they get serialised consistently
-if (!thing) throw AppError.notFound("Thing not found");
-if (!req.isAuthenticated()) throw AppError.unauthorized();
-if (badInput) throw AppError.badRequest("Explain what was wrong", "MACHINE_CODE");
-```
-
-### Database
-
-- Always use Drizzle's query builder — no raw SQL strings unless absolutely necessary
-- Wrap multi-step operations in `db.transaction()`
-- Add indexes for any column used in a `WHERE` clause on high-traffic paths
-- Run `pnpm --filter @workspace/db run push` after schema changes — never write manual migration SQL
-
-### API schema
-
-The **OpenAPI spec** (`lib/api-spec/`) is the single source of truth for request/response shapes. If you add or change an endpoint:
-
-1. Update `lib/api-spec/openapi.yaml`
-2. Regenerate clients: `pnpm --filter @workspace/api-zod run generate && pnpm --filter @workspace/api-client-react run generate`
-3. Update the route to match the new schema
-
-### Frontend
-
-- Components go in `src/components/` (shared) or `src/pages/` (page-level)
-- Use `useQuery` / `useMutation` from the generated `@workspace/api-client-react` hooks — don't write `fetch` calls by hand
-- Wrap any new major page section in `<ErrorBoundary>` if it fetches remote data
-- Prefer Tailwind utility classes; avoid inline styles
-- Keep components small — split into sub-components when a file exceeds ~200 lines
+Edit `lib/db/src/schema/`, add an idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` to `lib/db/migrations/0000_initial_schema.sql`, then run migrations.
 
 ---
 
-## Adding a Federation Peer
+## Testing Federation Locally
 
-To connect two local development nodes for testing:
+To test two nodes federating with each other on one machine:
 
-1. Start both nodes (each with their own `DATABASE_URL` and port)
-2. Register the peer in Node A's DB:
-   ```bash
-   curl -X POST http://localhost:8080/api/nodes \
-     -H "Content-Type: application/json" \
-     -d '{ "name": "Node B", "domain": "localhost:8082", "region": "local" }'
-   ```
-3. Generate keys for both nodes via `POST /api/nodes/:id/generate-keys`
-4. Initiate handshake from Node A:
-   ```bash
-   curl -X POST http://localhost:8080/api/federation/handshake \
-     -H "Content-Type: application/json" \
-     -d '{ "targetNodeUrl": "http://localhost:8082" }'
-   ```
+```bash
+# Terminal 1 — Node A on port 8080
+PORT=8080 DATABASE_URL=postgresql://localhost/nexus_a pnpm run dev
+
+# Terminal 2 — Node B on port 8082
+PORT=8082 DATABASE_URL=postgresql://localhost/nexus_b pnpm run dev
+
+# Initiate handshake from Node A → Node B
+curl -X POST http://localhost:8080/api/federation/handshake \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <admin-token>" \
+  -d '{"targetNodeUrl": "http://localhost:8082"}'
+```
 
 ---
 
@@ -212,25 +152,22 @@ To connect two local development nodes for testing:
 
 Open a [GitHub issue](https://github.com/The-No-Hands-company/Nexus-Hosting/issues) with:
 
-- A clear title describing the problem
 - Steps to reproduce
 - Expected vs. actual behaviour
-- Node.js version, OS, relevant environment details
+- Node.js version, OS, any relevant env details
 
-For security vulnerabilities, see [SECURITY.md](./SECURITY.md) — **do not open a public issue**.
+For security issues, see [SECURITY.md](./SECURITY.md) — do not open a public issue.
 
 ---
 
-## Pull Request Checklist
+## PR Checklist
 
-- [ ] Branch is up to date with `main`
-- [ ] `pnpm run typecheck` passes with no errors
-- [ ] New endpoints have corresponding OpenAPI spec entries
-- [ ] New list endpoints use `parsePagination` + `buildPaginatedResponse`
-- [ ] New route handlers are wrapped in `asyncHandler`
-- [ ] Schema changes are reflected in `lib/db` and pushed with `pnpm --filter @workspace/db run push`
-- [ ] Commit messages follow Conventional Commits
-- [ ] `docs/CHANGELOG.md` updated with a summary of changes
+- [ ] `pnpm run typecheck` passes
+- [ ] New endpoints are in `lib/api-spec/openapi.yaml`
+- [ ] New route handlers use `asyncHandler`
+- [ ] Schema changes have a migration entry
+- [ ] Unit tests added for non-trivial logic
+- [ ] `docs/CHANGELOG.md` updated
 
 ---
 

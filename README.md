@@ -1,11 +1,34 @@
 # Nexus Hosting
 
-A production-grade **federated website hosting service** where users deploy static sites and independent nodes form a cryptographically verified network. No single company controls the infrastructure — anyone can run a node.
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-24-green.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
+[![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](https://www.rust-lang.org/)
+[![Tests](https://img.shields.io/badge/tests-239%20passing-brightgreen.svg)](./artifacts/api-server/tests)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+
+A **federated website hosting platform** — deploy static and dynamic sites across a network of independent nodes. No single company controls the infrastructure. Anyone can run a node. Always free.
+
+---
+
+## Status & Call for Help
+
+**Nexus Hosting is in a genuinely deployable state.** Docker Compose works end-to-end, the federation protocol is live (Ed25519-signed handshakes, gossip discovery, site sync with retry queues), the Rust proxy compiles and serves sites with Brotli compression and Redis cache invalidation, and the CLI (`nh deploy`, `nh domains`, `nh teams`, etc.) covers the full workflow.
+
+This is a solo developer project built because I believe hosting infrastructure should be free and decentralised. The code is functional — what it doesn't have yet is a network.
+
+**The chicken-and-egg problem:** Federation shines with multiple independent nodes. A site deployed on your node can automatically replicate to every peer in the network. But right now there's only one node — mine. If you're willing to run a node (even temporarily on a small VPS, a Raspberry Pi, or a spare machine), the protocol is ready for you. Open an issue or DM me and I'll help you get set up and peered.
+
+**What I'm looking for:**
+- 🖥️ **Node operators** — run a node, join the federation, stress-test the sync protocol
+- 🧪 **Early testers** — deploy a site, break things, report what's confusing
+- 💬 **Feedback** — especially on federation handshakes, the CLI UX, and the SELF_HOSTING guide
+- 🔍 **Security eyes** — the Ed25519 implementation and HMAC cookie verification would benefit from a second look
+
+**What this is not (yet):** A polished product with a landing page and onboarding flow. It's functional software that does what it says, documented honestly, with 239 passing unit tests and a real incident response runbook. The rough edges are known and tracked in [ROADMAP.md](./ROADMAP.md).
+
+> 💡 If you just want to host a website for free right now: clone the repo, run `docker compose up`, and you have a working hosting node in ~5 minutes. No account needed, no payment, no limits except your own hardware.
 
 ---
 
@@ -165,6 +188,24 @@ pnpm run build
 
 ---
 
+## Screenshots
+
+> Screenshots coming once the first public node is running. For now, here's what you get:
+
+**Dashboard** — real-time network stats, your sites at a glance, federation peer count.
+
+**Deploy page** — drag-and-drop file upload or connect a Git repo for auto-deploy on push. Visual deployment diff shows exactly what changed (+/~/- files, net size delta).
+
+**Admin panel** — five tabs: audit log, site health monitor, process manager (NLPL/Node.js/Python), all users, all sites, and a full moderation panel with abuse report review and IP ban management.
+
+**Federation page** — live peer list with Ed25519 trust levels (unverified → verified → trusted), handshake initiation, event log, and blocklist management.
+
+**CLI** — `nh deploy ./dist --site mysite`, `nh domains add 42 mysite.com`, `nh teams invite 42 collaborator@example.com --role editor`.
+
+*If you run a node and want to contribute screenshots, open a PR.*
+
+---
+
 ## API Reference
 
 See [docs/API.md](./docs/API.md) for the full REST API reference.
@@ -263,13 +304,21 @@ Both sites are plain HTML/CSS/JS — no build step required. They are stored in 
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to get started, code style, and the PR process.
+All contributions welcome — from node operators reporting bugs to developers adding features. See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to get started.
+
+**Highest-value contributions right now:**
+- Run a node and report what breaks during federation setup
+- Test the CLI (`nh deploy`, `nh domains`, `nh teams`) against a real node and file issues for confusing behaviour
+- Review the Ed25519 signing/verification in `artifacts/api-server/src/lib/federation.ts`
+- Write a blog post or forum thread about federated hosting — the project needs visibility more than code right now
 
 ---
 
 ## Security
 
-See [SECURITY.md](./SECURITY.md) for the vulnerability disclosure policy and security model.
+See [SECURITY.md](./SECURITY.md) for the vulnerability disclosure policy.
+
+The security model in brief: Ed25519 signatures on all federation messages, HMAC-signed cookies for password-protected sites, SHA-256 hashed API tokens, Redis-backed rate limiting, `timingSafeEqual` on all secret comparisons, no stack traces in production responses.
 
 ---
 
