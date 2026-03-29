@@ -3,255 +3,412 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Nexus Hosting — federated website hosting. Deploy static and dynamic sites across a network of independent nodes. Always free. Nobody owns the network." />
-  <title>Nexus Hosting — Host your site. Own your infrastructure.</title>
+  <meta name="description" content="Nexus Hosting — deploy your website on a network nobody controls. Free forever. Built on federated infrastructure anyone can run." />
+  <meta property="og:title" content="Nexus Hosting" />
+  <meta property="og:description" content="Host your website on a network nobody owns. Free forever. Federated." />
+  <title>Nexus Hosting — host your website on a network nobody owns</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#080810;--bg2:#0e0e1a;--bg3:#13131f;
+      --border:rgba(255,255,255,0.07);--border2:rgba(0,229,255,0.15);
+      --accent:#00e5ff;--text:#ddddf0;--muted:#7070a0;
+      --mono:'Space Mono',monospace;--sans:'DM Sans',system-ui,sans-serif;
+    }
+    html{scroll-behavior:smooth}
+    body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:1rem;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    a{color:inherit;text-decoration:none}
+
+    /* grain */
+    body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+      background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");opacity:.35}
+    .container{max-width:1080px;margin:0 auto;padding:0 1.5rem;position:relative;z-index:1}
+
+    /* buttons */
+    .btn{display:inline-flex;align-items:center;gap:.5rem;padding:.75rem 1.5rem;border-radius:6px;border:1px solid transparent;font-family:var(--mono);font-size:.8125rem;font-weight:700;letter-spacing:.02em;cursor:pointer;transition:all .15s;white-space:nowrap}
+    .btn-primary{background:var(--accent);color:#050510;border-color:var(--accent)}
+    .btn-primary:hover{background:#33ecff}
+    .btn-outline{background:transparent;color:var(--accent);border-color:var(--border2)}
+    .btn-outline:hover{background:rgba(0,229,255,.08)}
+    .btn-ghost{background:transparent;color:var(--muted);border-color:var(--border)}
+    .btn-ghost:hover{color:var(--text);border-color:rgba(255,255,255,.15)}
+    .btn-lg{padding:.9rem 2rem;font-size:.875rem}
+
+    /* nav */
+    .nav{position:sticky;top:0;z-index:100;background:rgba(8,8,16,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+    .nav-inner{display:flex;align-items:center;justify-content:space-between;height:60px;max-width:1080px;margin:0 auto;padding:0 1.5rem}
+    .logo{display:flex;align-items:center;gap:.6rem;font-family:var(--mono);font-weight:700;font-size:.9375rem;color:var(--text)}
+    .logo-hex{font-size:1.2rem;color:var(--accent)}
+    .nav-links{display:flex;align-items:center;gap:.25rem}
+    .nav-links a{padding:.4rem .75rem;border-radius:4px;font-size:.875rem;color:var(--muted);transition:color .15s,background .15s}
+    .nav-links a:hover{color:var(--text);background:rgba(255,255,255,.04)}
+    @media(max-width:640px){.nav-links .hide-mobile{display:none}}
+
+    /* hero */
+    .hero{position:relative;overflow:hidden;padding:7rem 0 5rem;border-bottom:1px solid var(--border)}
+    .hero-bg{position:absolute;inset:0;z-index:0;pointer-events:none;
+      background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(0,229,255,.06) 0%,transparent 70%),
+               radial-gradient(ellipse 40% 40% at 80% 60%,rgba(124,108,255,.04) 0%,transparent 60%)}
+    .hero-grid{position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.025;
+      background-image:linear-gradient(rgba(0,229,255,.5) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.5) 1px,transparent 1px);
+      background-size:60px 60px;
+      mask-image:radial-gradient(ellipse 80% 80% at 50% 50%,black 30%,transparent 100%)}
+    .hero-inner{position:relative;z-index:1;text-align:center}
+
+    .status-badge{display:inline-flex;align-items:center;gap:.5rem;padding:.35rem .9rem;margin-bottom:2rem;
+      border-radius:100px;border:1px solid rgba(0,229,255,.2);background:rgba(0,229,255,.05);
+      font-family:var(--mono);font-size:.75rem;color:var(--accent);letter-spacing:.04em}
+    .status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);animation:pulse 2s ease-in-out infinite}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+
+    h1.hero-title{font-family:var(--mono);font-size:clamp(2rem,5vw,3.5rem);font-weight:700;line-height:1.15;letter-spacing:-.03em;color:#fff;margin-bottom:1.5rem}
+    h1.hero-title .accent{color:var(--accent)}
+    .hero-sub{max-width:560px;margin:0 auto 2.5rem;font-size:1.0625rem;color:var(--muted);line-height:1.7}
+    .hero-cta{display:flex;align-items:center;justify-content:center;gap:.75rem;flex-wrap:wrap;margin-bottom:3rem}
+
+    .hero-status{display:inline-block;padding:.75rem 1.25rem;background:rgba(255,255,255,.025);
+      border:1px solid var(--border);border-radius:6px;
+      font-family:var(--mono);font-size:.75rem;color:var(--muted);line-height:2;text-align:left}
+    .ok{color:#4ade80}.wip{color:#facc15}
+
+    /* sections */
+    .section{padding:5rem 0;border-bottom:1px solid var(--border)}
+    .section-alt{background:var(--bg2)}
+    .label{font-family:var(--mono);font-size:.6875rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:.75rem}
+    .section-title{font-family:var(--mono);font-size:clamp(1.5rem,3vw,2.25rem);font-weight:700;letter-spacing:-.02em;color:#fff;line-height:1.2;margin-bottom:1rem}
+    .section-sub{max-width:520px;color:var(--muted);font-size:1.0625rem;line-height:1.7;margin-bottom:3rem}
+
+    /* explainer */
+    .explainer{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:start}
+    @media(max-width:768px){.explainer{grid-template-columns:1fr}}
+    .explainer-text p{color:var(--muted);line-height:1.8;margin-bottom:1rem}
+    .explainer-text p strong{color:var(--text)}
+    .explainer-text p:last-child{margin-bottom:0}
+    .fed-diagram{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:1.5rem;display:flex;align-items:center;justify-content:center}
+
+    /* steps */
+    .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem}
+    @media(max-width:640px){.steps{grid-template-columns:1fr}}
+    .step{padding:1.75rem;background:var(--bg3);border:1px solid var(--border);border-radius:10px;transition:border-color .2s}
+    .step:hover{border-color:var(--border2)}
+    .step-num{font-family:var(--mono);font-size:.6875rem;font-weight:700;letter-spacing:.1em;color:var(--accent);margin-bottom:1rem}
+    .step h3{font-family:var(--mono);font-size:.9375rem;font-weight:700;color:#fff;margin-bottom:.5rem}
+    .step p{color:var(--muted);font-size:.9375rem;line-height:1.6}
+
+    /* code */
+    .code-block{background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+    .code-header{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)}
+    .code-header span{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+    .copy-btn{background:none;border:1px solid var(--border);border-radius:4px;padding:.2rem .6rem;font-family:var(--mono);font-size:.6875rem;color:var(--muted);cursor:pointer;transition:all .15s}
+    .copy-btn:hover{color:var(--accent);border-color:var(--border2)}
+    pre{padding:1.25rem 1.5rem;overflow-x:auto;font-family:var(--mono);font-size:.8125rem;line-height:1.8;color:var(--text)}
+    .c-comment{color:var(--muted)}.c-cmd{color:var(--accent)}.c-str{color:#86efac}.c-key{color:#c084fc}
+
+    /* status */
+    .status-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+    @media(max-width:640px){.status-grid{grid-template-columns:1fr}}
+    .status-card{padding:1.5rem;background:var(--bg3);border:1px solid var(--border);border-radius:10px}
+    .status-card h3{font-family:var(--mono);font-size:.8125rem;font-weight:700;margin-bottom:1rem;letter-spacing:.05em}
+    .status-card h3.works{color:#4ade80}.status-card h3.pending{color:#facc15}
+    .status-list{list-style:none}
+    .status-list li{display:flex;align-items:flex-start;gap:.6rem;padding:.35rem 0;font-size:.9rem;color:var(--muted);border-bottom:1px solid rgba(255,255,255,.04)}
+    .status-list li:last-child{border-bottom:none}
+    .status-list li::before{content:'checkmark';color:#4ade80;font-family:var(--mono);font-size:.8rem;flex-shrink:0;margin-top:.05em}
+    .status-list.pending li::before{content:'circle';color:#facc15}
+
+    /* node cta */
+    .node-cta{background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:3rem;display:grid;grid-template-columns:1fr auto;gap:2rem;align-items:center}
+    @media(max-width:640px){.node-cta{grid-template-columns:1fr}}
+    .node-cta h2{font-family:var(--mono);font-size:1.375rem;font-weight:700;color:#fff;margin-bottom:.75rem;letter-spacing:-.02em}
+    .node-cta p{color:var(--muted);line-height:1.7}
+    .node-cta-actions{display:flex;flex-direction:column;gap:.75rem;flex-shrink:0}
+
+    /* footer */
+    footer{padding:3rem 0;border-top:1px solid var(--border)}
+    .footer-inner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1.5rem}
+    .footer-left{color:var(--muted);font-size:.875rem;line-height:1.7}
+    .footer-left a{color:var(--accent)}
+    .footer-links{display:flex;gap:1.25rem;flex-wrap:wrap}
+    .footer-links a{font-family:var(--mono);font-size:.75rem;color:var(--muted);transition:color .15s}
+    .footer-links a:hover{color:var(--text)}
+
+    /* reveal */
+    .reveal{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease}
+    .reveal.visible{opacity:1;transform:none}
+    .reveal-2{transition-delay:.1s}.reveal-3{transition-delay:.2s}.reveal-4{transition-delay:.3s}
+  </style>
 </head>
 <body>
 
-  <div class="grid-bg" aria-hidden="true"></div>
-
-  <nav class="nav" id="nav">
+  <nav class="nav">
     <div class="nav-inner">
-      <a href="#" class="logo">
-        <svg class="logo-mark" viewBox="0 0 32 32" fill="none">
-          <polygon points="16,2 30,9 30,23 16,30 2,23 2,9" stroke="currentColor" stroke-width="1.5" fill="none"/>
-          <polygon points="16,8 24,12 24,20 16,24 8,20 8,12" stroke="currentColor" stroke-width="1" fill="none" opacity="0.5"/>
-          <circle cx="16" cy="16" r="2.5" fill="currentColor"/>
-        </svg>
-        Nexus Hosting
-      </a>
+      <a href="/" class="logo"><span class="logo-hex">&#x2B21;</span><span>Nexus Hosting</span></a>
       <div class="nav-links">
-        <a href="#how-it-works">How it works</a>
-        <a href="#run-a-node">Run a node</a>
-        <a href="https://github.com/The-No-Hands-company/Nexus-Hosting" target="_blank" rel="noopener">GitHub</a>
-        <a href="/api/login" class="btn-nav">Deploy a site &#8594;</a>
+        <a href="#how-it-works" class="hide-mobile">How it works</a>
+        <a href="#status" class="hide-mobile">Status</a>
+        <a href="#run-a-node" class="hide-mobile">Run a node</a>
+        <a href="https://github.com/The-No-Hands-company/Nexus-Hosting" target="_blank" rel="noopener" class="hide-mobile">GitHub</a>
+        <a href="/api/login" class="btn btn-outline" style="padding:.4rem 1rem">Deploy a site</a>
       </div>
-      <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
-    </div>
-    <div class="mobile-menu" id="mobile-menu">
-      <a href="#how-it-works">How it works</a>
-      <a href="#run-a-node">Run a node</a>
-      <a href="https://github.com/The-No-Hands-company/Nexus-Hosting" target="_blank" rel="noopener">GitHub</a>
-      <a href="/api/login" class="btn-primary">Deploy a site</a>
     </div>
   </nav>
 
   <section class="hero">
-    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="hero-bg"></div>
+    <div class="hero-grid"></div>
     <div class="container">
-      <div class="hero-chip">
-        <span class="pulse"></span>
-        Early access &mdash; functional software, honest docs
-      </div>
-      <h1>Host your site.<br><em>Own your infrastructure.</em></h1>
-      <p class="hero-sub">A federated network of independent hosting nodes. Deploy once, replicate everywhere. No single company controls it. No plans, no tiers. Always free.</p>
-      <div class="hero-ctas">
-        <a href="/api/login" class="btn-primary btn-lg">Deploy a site <span>&#8594;</span></a>
-        <a href="https://github.com/The-No-Hands-company/Nexus-Hosting" class="btn-ghost btn-lg" target="_blank" rel="noopener">
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-          View source
-        </a>
-      </div>
-      <div class="terminal">
-        <div class="terminal-bar">
-          <div class="dots"><span></span><span></span><span></span></div>
-          <span class="terminal-title">bash</span>
+      <div class="hero-inner">
+        <div class="status-badge">
+          <span class="status-dot"></span>
+          EARLY STAGE &nbsp;&middot;&nbsp; SOLO DEVELOPER &nbsp;&middot;&nbsp; LOOKING FOR NODE OPERATORS
         </div>
-        <pre class="terminal-body"><span class="t-dim"># deploy your site in seconds</span>
-<span class="t-prompt">$</span> nh deploy ./dist --site mysite
-<span class="t-out">  Uploading 23 files...</span>
-<span class="t-out">  &#10003; Deployed v4 &#8594; mysite.nexushosting.network</span>
-<span class="t-out">  &#10003; Synced to 3 federation peers</span>
 
-<span class="t-dim"># connect a git repo and push to deploy</span>
-<span class="t-prompt">$</span> nh init --git https://github.com/you/your-site
-<span class="t-out">  &#10003; Webhook configured. Push to main to deploy.</span></pre>
-      </div>
-    </div>
-  </section>
+        <h1 class="hero-title">
+          Host your website<br/>on a network <span class="accent">nobody owns.</span>
+        </h1>
 
-  <section class="honest-section">
-    <div class="container">
-      <div class="honest-grid">
-        <div class="honest-card good">
-          <h3><span class="icon-good">&#10003;</span> What works today</h3>
-          <ul>
-            <li>Full stack runs with <code>docker compose up</code></li>
-            <li>Ed25519-signed federation &mdash; handshakes, gossip, site sync with retry queue</li>
-            <li>Static and dynamic sites (NLPL, Node.js, Python)</li>
-            <li>CLI: <code>nh deploy</code>, <code>nh domains</code>, <code>nh teams</code> and more</li>
-            <li>Git-connected builds with build cache and preview deployments</li>
-            <li>Rust proxy with Brotli compression and Redis cache invalidation</li>
-            <li>Admin panel: abuse reports, IP banning, node trust scoring</li>
-            <li>239 unit tests passing</li>
-          </ul>
+        <p class="hero-sub">
+          Nexus Hosting is federated website hosting. Your site lives on independent nodes
+          run by real people, not a single company. Free forever. No plans, no limits except hardware.
+        </p>
+
+        <div class="hero-cta">
+          <a href="/api/login" class="btn btn-primary btn-lg">Deploy a site free &#x2192;</a>
+          <a href="#run-a-node" class="btn btn-ghost btn-lg">Run a node</a>
+          <a href="https://github.com/The-No-Hands-company/Nexus-Hosting" target="_blank" rel="noopener" class="btn btn-ghost btn-lg">View source</a>
         </div>
-        <div class="honest-card wip">
-          <h3><span class="icon-wip">&#9680;</span> Not there yet</h3>
-          <ul>
-            <li>Auth requires OIDC setup &mdash; email+password login is next</li>
-            <li>No public shared node yet &mdash; you need a server to try it</li>
-            <li>Federation needs multiple nodes to shine &mdash; the network is small</li>
-            <li>No guided onboarding wizard &mdash; good docs, rough first-run UX</li>
-            <li>Malware scanning hook exists, ClamAV not bundled</li>
-          </ul>
+
+        <div class="hero-status">
+          <span class="ok">&#x2713;</span> Docker Compose works &nbsp;&nbsp;
+          <span class="ok">&#x2713;</span> Federation protocol live &nbsp;&nbsp;
+          <span class="ok">&#x2713;</span> CLI ships (nh deploy) &nbsp;&nbsp;
+          <span class="ok">&#x2713;</span> 239 tests passing<br/>
+          <span class="wip">&#x25CB;</span> One live node so far &nbsp;&nbsp;
+          <span class="wip">&#x25CB;</span> No polished signup flow yet &nbsp;&nbsp;
+          <span class="wip">&#x25CB;</span> Auth requires OIDC setup
         </div>
       </div>
     </div>
   </section>
 
-  <section class="how-section" id="how-it-works">
+  <section class="section" id="how-it-works">
     <div class="container">
-      <div class="label">How it works</div>
-      <h2>Simple idea.<br>Solid implementation.</h2>
+      <div class="label">The idea</div>
+      <h2 class="section-title">Your site doesn't live on one server.</h2>
+      <div class="explainer reveal">
+        <div class="explainer-text">
+          <p>Every hosting company today is a single point of control. They can take your site down, throttle it, change pricing, or go out of business.</p>
+          <p>Nexus Hosting is different. When you deploy, your site replicates automatically to every node in the network. Each node is run by an independent operator &mdash; a person, not a company. <strong>No one entity controls the network.</strong></p>
+          <p>Nodes find each other, verify identity with <strong>Ed25519 cryptographic signatures</strong>, and sync sites automatically on every deploy. If a node goes offline, the others keep your site running.</p>
+          <p>Right now the network has one node. The protocol is ready. <a href="#run-a-node" style="color:var(--accent)">The network grows when people run nodes.</a></p>
+        </div>
+        <div class="fed-diagram reveal reveal-2">
+          <svg viewBox="0 0 360 260" width="100%" style="max-width:360px" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="ng" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.2"/>
+                <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+              </radialGradient>
+              <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="#00e5ff"/>
+              </marker>
+            </defs>
+            <g stroke="rgba(0,229,255,0.2)" stroke-width="1" fill="none" stroke-dasharray="4 4">
+              <line x1="180" y1="90" x2="80" y2="185"/>
+              <line x1="180" y1="90" x2="180" y2="195"/>
+              <line x1="180" y1="90" x2="280" y2="185"/>
+              <line x1="80" y1="185" x2="180" y2="195"/>
+              <line x1="280" y1="185" x2="180" y2="195"/>
+            </g>
+            <circle cx="180" cy="38" r="14" fill="rgba(0,229,255,0.1)" stroke="#00e5ff" stroke-width="1.5"/>
+            <text x="180" y="42" text-anchor="middle" font-family="Space Mono" font-size="10" fill="#00e5ff">YOU</text>
+            <text x="180" y="60" text-anchor="middle" font-family="Space Mono" font-size="7" fill="rgba(255,255,255,0.3)">deploy once</text>
+            <path d="M180 54 L180 70" stroke="#00e5ff" stroke-width="1.5" marker-end="url(#arr)"/>
+            <circle cx="180" cy="80" r="18" fill="url(#ng)" stroke="#00e5ff" stroke-width="2"/>
+            <text x="180" y="76" text-anchor="middle" font-family="Space Mono" font-size="7" fill="#00e5ff" font-weight="bold">PRIMARY</text>
+            <text x="180" y="87" text-anchor="middle" font-family="Space Mono" font-size="7" fill="rgba(255,255,255,0.5)">NODE</text>
+            <g>
+              <circle cx="80" cy="185" r="22" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+              <text x="80" y="181" text-anchor="middle" font-family="Space Mono" font-size="7" fill="rgba(255,255,255,0.6)">PEER</text>
+              <text x="80" y="192" text-anchor="middle" font-family="Space Mono" font-size="7" fill="rgba(255,255,255,0.3)">VPS / EU</text>
+              <text x="80" y="215" text-anchor="middle" font-family="Space Mono" font-size="8" fill="rgba(0,229,255,0.5)">your-site.com &#x2713;</text>
+            </g>
+            <g>
+              <circle cx="180" cy="195" r="22" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+              <text x="180" y="191" text-anchor="middle" font-family="Space Mono" font-size="7" fill="rgba(255,255,255,0.6)">PEER</text>
+              <text x="180" y="202" text-anchor="middle" font-family="Space Mono" font-size="7" fill="rgba(255,255,255,0.3)">RPi / Home</text>
+              <text x="180" y="225" text-anchor="middle" font-family="Space Mono" font-size="8" fill="rgba(0,229,255,0.5)">your-site.com &#x2713;</text>
+            </g>
+            <g>
+              <circle cx="280" cy="185" r="22" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+              <text x="280" y="181" text-anchor="middle" font-family="Space Mono" font-size="7" fill="rgba(255,255,255,0.6)">PEER</text>
+              <text x="280" y="192" text-anchor="middle" font-family="Space Mono" font-size="7" fill="rgba(255,255,255,0.3)">VPS / SEA</text>
+              <text x="280" y="215" text-anchor="middle" font-family="Space Mono" font-size="8" fill="rgba(0,229,255,0.5)">your-site.com &#x2713;</text>
+            </g>
+            <text x="180" y="248" text-anchor="middle" font-family="Space Mono" font-size="7" fill="rgba(255,255,255,0.2)">Ed25519 verified &middot; auto-synced on deploy</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="container">
+      <div class="label">Deploying a site</div>
+      <h2 class="section-title">Three ways to go live.</h2>
+      <p class="section-sub">All produce the same result &mdash; a versioned, replicated deployment with rollback.</p>
       <div class="steps">
-        <div class="step">
-          <div class="step-num">01</div>
-          <div class="step-body">
-            <h4>Run a node</h4>
-            <p>Any server with Docker becomes a Nexus node. It gets an Ed25519 keypair, joins the federation, and starts peering with other operators.</p>
-          </div>
+        <div class="step reveal">
+          <div class="step-num">01 &mdash; DRAG AND DROP</div>
+          <h3>Upload files</h3>
+          <p>Log in to the dashboard, create a site, drag your HTML/CSS/JS into the uploader. Click Deploy. Done.</p>
         </div>
-        <div class="step-line" aria-hidden="true"></div>
-        <div class="step">
-          <div class="step-num">02</div>
-          <div class="step-body">
-            <h4>Deploy your site</h4>
-            <p>Upload files through the dashboard or use <code>nh deploy</code>. Connect a Git repo for push-to-deploy. Static HTML or a live Node.js server &mdash; both work.</p>
-          </div>
+        <div class="step reveal reveal-2">
+          <div class="step-num">02 &mdash; GIT + AUTO-BUILD</div>
+          <h3>Connect a repo</h3>
+          <p>Point Nexus at a GitHub/GitLab repo. Push to main and the node clones, installs, builds, and deploys. Build cache keeps it fast.</p>
         </div>
-        <div class="step-line" aria-hidden="true"></div>
-        <div class="step">
-          <div class="step-num">03</div>
-          <div class="step-body">
-            <h4>Replicate automatically</h4>
-            <p>On every deploy, your node sends a signed <code>site_sync</code> to all federation peers. They pull the files. Visitors get routed to the closest node.</p>
-          </div>
-        </div>
-        <div class="step-line" aria-hidden="true"></div>
-        <div class="step">
-          <div class="step-num">04</div>
-          <div class="step-body">
-            <h4>Nobody owns it</h4>
-            <p>Each node is independently operated. No central authority. No company that can take your site offline. The network is as resilient as its operators.</p>
-          </div>
+        <div class="step reveal reveal-3">
+          <div class="step-num">03 &mdash; CLI</div>
+          <h3>Use nh deploy</h3>
+          <p>Install the CLI: <code style="color:var(--accent);font-family:var(--mono)">npm i -g @nexushosting/cli</code> then <code style="color:var(--accent);font-family:var(--mono)">nh deploy ./dist</code>. Works in CI and GitHub Actions.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="node-section" id="run-a-node">
+  <section class="section" id="run-a-node">
     <div class="container">
-      <div class="label">For node operators</div>
-      <h2>Run a node in 5 minutes</h2>
-      <p class="section-sub">A $6/month VPS, a Raspberry Pi 4, a spare laptop &mdash; anything with Docker works. The full stack runs on 1&nbsp;GB RAM with <code>LOW_RESOURCE=true</code>.</p>
-      <div class="code-block">
-        <div class="code-bar">
-          <span>Quick start</span>
-          <button class="copy-btn" onclick="copyBlock(this)">Copy</button>
+      <div class="label">Running a node</div>
+      <h2 class="section-title">Five minutes to a working node.</h2>
+      <p class="section-sub">
+        The network grows when people run nodes. A VPS, a Raspberry Pi, a spare machine &mdash; the stack runs on 1&nbsp;GB RAM with <code style="color:var(--accent);font-family:var(--mono)">LOW_RESOURCE=true</code>.
+        <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/docs/SELF_HOSTING.md" style="color:var(--accent)" target="_blank" rel="noopener">Full guide &#x2192;</a>
+      </p>
+      <div class="code-block reveal" style="max-width:680px;margin-bottom:1.5rem">
+        <div class="code-header">
+          <span>terminal</span>
+          <button class="copy-btn" onclick="copyCode(this,'code1')">copy</button>
         </div>
-        <pre class="code-content">git clone https://github.com/The-No-Hands-company/Nexus-Hosting.git
-cd Nexus-Hosting &amp;&amp; cp .env.example .env
-
-<span class="c-comment"># Edit .env &mdash; five things to set:</span>
-<span class="c-comment"># DATABASE_URL, ISSUER_URL, OIDC_CLIENT_ID,</span>
-<span class="c-comment"># COOKIE_SECRET, PUBLIC_DOMAIN</span>
-<span class="c-comment"># MinIO (S3 storage) is bundled &mdash; no external account needed</span>
-
-docker compose up -d
-
-curl http://localhost:8080/api/health/live
-<span class="c-comment"># {"status":"ok"}</span></pre>
+        <pre id="code1"><span class="c-comment"># Clone, configure, run</span>
+<span class="c-cmd">git clone</span> <span class="c-str">https://github.com/The-No-Hands-company/Nexus-Hosting.git</span>
+<span class="c-cmd">cd</span> Nexus-Hosting &amp;&amp; <span class="c-cmd">cp</span> .env.example .env
+<span class="c-comment"># Edit .env: set ISSUER_URL, OIDC_CLIENT_ID, COOKIE_SECRET,</span>
+<span class="c-comment"># PUBLIC_DOMAIN, and S3 credentials (MinIO included in Compose)</span>
+<span class="c-cmd">docker compose up -d</span></pre>
       </div>
-
-      <div class="node-perks">
-        <div class="perk">
-          <div class="perk-icon">&#11041;</div>
-          <h4>Join the federation</h4>
-          <p>Set <code>BOOTSTRAP_URLS</code> to connect to existing peers on first start. Gossip protocol handles discovery automatically after that.</p>
-        </div>
-        <div class="perk">
-          <div class="perk-icon">&#9881;</div>
-          <h4>You set the rules</h4>
-          <p>Declare your storage capacity. Set per-user caps if needed. Full abuse report system and IP banning built into the admin panel.</p>
-        </div>
-        <div class="perk">
-          <div class="perk-icon">&#128216;</div>
-          <h4>Real documentation</h4>
-          <p>Self-hosting guide, upgrade runbook, incident response playbook, and an honest assessment of what works and what doesn&rsquo;t.</p>
-        </div>
-      </div>
-
-      <div class="node-call">
-        <strong>The network needs more nodes.</strong> If you run one &mdash; even temporarily &mdash; open an issue on GitHub. I&rsquo;ll help you get peered and we can test the federation protocol together.
-        <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/issues/new?title=I+want+to+run+a+node" class="btn-primary" target="_blank" rel="noopener">I want to run a node &#8594;</a>
+      <div class="reveal reveal-2" style="max-width:680px">
+        <p style="color:var(--muted);font-size:.9375rem;line-height:1.7;margin-bottom:1rem">
+          What you get: PostgreSQL, Redis, MinIO, the API server, frontend, and Rust proxy &mdash; all wired. Caddy handles TLS.
+        </p>
+        <p style="color:var(--muted);font-size:.9375rem;line-height:1.7">
+          To peer with other nodes, set <code style="color:var(--accent);font-family:var(--mono);font-size:.8125rem">BOOTSTRAP_URLS</code> in your .env.
+          Your node will handshake, exchange Ed25519 keys, and sync sites automatically.
+        </p>
       </div>
     </div>
   </section>
 
-  <section class="stack-section">
+  <section class="section section-alt" id="status">
     <div class="container">
-      <div class="label">Built with</div>
-      <div class="stack-items">
-        <div class="si"><span class="badge ts">TS</span> TypeScript + Express 5</div>
-        <div class="si"><span class="badge rs">RS</span> Rust + Axum proxy</div>
-        <div class="si"><span class="badge re">&#9883;</span> React + Vite</div>
-        <div class="si"><span class="badge pg">PG</span> PostgreSQL + Drizzle</div>
-        <div class="si"><span class="badge rd">R</span> Redis</div>
-        <div class="si"><span class="badge cr">&#128273;</span> Ed25519 / HMAC</div>
+      <div class="label">Honest status</div>
+      <h2 class="section-title">What works. What doesn't. What's next.</h2>
+      <p class="section-sub">Built by one person. Tracked in <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/ROADMAP.md" style="color:var(--accent)" target="_blank" rel="noopener">ROADMAP.md</a>.</p>
+      <div class="status-grid reveal">
+        <div class="status-card">
+          <h3 class="works">// works today</h3>
+          <ul class="status-list">
+            <li>Docker Compose &mdash; one command to running node</li>
+            <li>Ed25519 federation: handshakes, gossip, site sync</li>
+            <li>Static site hosting with host-header routing</li>
+            <li>Git auto-deploy with build cache</li>
+            <li>Preview deployments (branch &#x2192; preview URL)</li>
+            <li>Rust proxy: Brotli, LRU cache, Redis invalidation</li>
+            <li>CLI: nh deploy, nh domains, nh teams, nh status</li>
+            <li>Admin: users, moderation, audit log, federation trust</li>
+            <li>Dynamic sites: NLPL, Node.js, Python</li>
+            <li>Custom domains with ACME/TLS automation</li>
+            <li>Email verification, abuse reports, IP bans</li>
+          </ul>
+        </div>
+        <div class="status-card">
+          <h3 class="pending">// not yet</h3>
+          <ul class="status-list pending">
+            <li>Email+password auth (OIDC required today)</li>
+            <li>Public shared node to try without infra</li>
+            <li>First-run onboarding wizard</li>
+            <li>Malware scanning (hook exists, scanner not bundled)</li>
+            <li>Dynamic site federation across nodes</li>
+            <li>Canonical public seed node list</li>
+          </ul>
+          <p style="margin-top:1.25rem;font-size:.875rem;color:var(--muted);line-height:1.6">
+            The biggest friction is auth setup. Running a node requires an OIDC provider (Authentik, Keycloak, Auth0).
+            Adding email+password auth is the next priority.
+          </p>
+        </div>
       </div>
     </div>
   </section>
 
-  <footer class="footer">
+  <section class="section">
     <div class="container">
-      <div class="footer-main">
-        <div class="footer-brand">
-          <a href="#" class="logo">
-            <svg class="logo-mark" viewBox="0 0 32 32" fill="none">
-              <polygon points="16,2 30,9 30,23 16,30 2,23 2,9" stroke="currentColor" stroke-width="1.5" fill="none"/>
-              <polygon points="16,8 24,12 24,20 16,24 8,20 8,12" stroke="currentColor" stroke-width="1" fill="none" opacity="0.5"/>
-              <circle cx="16" cy="16" r="2.5" fill="currentColor"/>
-            </svg>
-            Nexus Hosting
-          </a>
-          <p>Free. Federated. Open source.<br>Built by <a href="https://github.com/The-No-Hands-company" target="_blank" rel="noopener">The No Hands Company</a>.</p>
+      <div class="node-cta reveal">
+        <div>
+          <h2>The network needs nodes.</h2>
+          <p>
+            Federation only works with multiple independent operators. If you run a node &mdash;
+            even temporarily on a $6/month VPS &mdash; you become part of something that doesn't
+            exist yet: a hosting network nobody controls. Open an issue or start a discussion
+            and I'll help you get set up and peered.
+          </p>
         </div>
-        <div class="footer-cols">
-          <div class="footer-col">
-            <h5>Project</h5>
-            <a href="https://github.com/The-No-Hands-company/Nexus-Hosting" target="_blank" rel="noopener">GitHub</a>
-            <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/ROADMAP.md" target="_blank" rel="noopener">Roadmap</a>
-            <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/docs/HONEST_ASSESSMENT.md" target="_blank" rel="noopener">Honest Assessment</a>
-            <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/issues" target="_blank" rel="noopener">Issues</a>
-          </div>
-          <div class="footer-col">
-            <h5>Docs</h5>
-            <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/docs/SELF_HOSTING.md" target="_blank" rel="noopener">Self-hosting</a>
-            <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/FEDERATION.md" target="_blank" rel="noopener">Federation protocol</a>
-            <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/docs/UPGRADE.md" target="_blank" rel="noopener">Upgrade guide</a>
-            <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/docs/API.md" target="_blank" rel="noopener">API reference</a>
-          </div>
-          <div class="footer-col">
-            <h5>Get involved</h5>
-            <a href="/api/login">Deploy a site</a>
-            <a href="#run-a-node">Run a node</a>
-            <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contribute</a>
-            <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/SECURITY.md" target="_blank" rel="noopener">Security</a>
-          </div>
+        <div class="node-cta-actions">
+          <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/issues/new?title=I+want+to+run+a+node&body=My+setup%3A%0A%0AQuestions%3A%0A" target="_blank" rel="noopener" class="btn btn-primary">Open an issue &#x2192;</a>
+          <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/docs/SELF_HOSTING.md" target="_blank" rel="noopener" class="btn btn-outline">Self-hosting guide</a>
+          <a href="https://github.com/The-No-Hands-company/Nexus-Hosting" target="_blank" rel="noopener" class="btn btn-ghost">&#x2605; Star on GitHub</a>
         </div>
       </div>
-      <div class="footer-bottom">
-        <span>MIT &mdash; free to use, fork, and run forever.</span>
-        <span>v0.1.0 &mdash; <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/docs/HONEST_ASSESSMENT.md" target="_blank" rel="noopener">not yet 1.0</a></span>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-left">
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem;font-family:var(--mono);font-weight:700;color:var(--text)">
+            <span style="color:var(--accent)">&#x2B21;</span> Nexus Hosting
+          </div>
+          A project by <a href="https://github.com/The-No-Hands-company" target="_blank" rel="noopener">The No Hands Company</a>.
+          MIT License. Inspired by the Nexus federated chat project.
+        </div>
+        <div class="footer-links">
+          <a href="https://github.com/The-No-Hands-company/Nexus-Hosting" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/docs/SELF_HOSTING.md" target="_blank" rel="noopener">Self-hosting</a>
+          <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/docs/API.md" target="_blank" rel="noopener">API</a>
+          <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/ROADMAP.md" target="_blank" rel="noopener">Roadmap</a>
+          <a href="https://github.com/The-No-Hands-company/Nexus-Hosting/blob/main/SECURITY.md" target="_blank" rel="noopener">Security</a>
+          <a href="/api/login">Deploy a site</a>
+        </div>
       </div>
     </div>
   </footer>
 
-  <script src="app.js"></script>
+  <script>
+    const obs = new IntersectionObserver(entries => {
+      entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('visible'); obs.unobserve(e.target); } });
+    }, {threshold:0.1, rootMargin:'0px 0px -40px 0px'});
+    document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+    function copyCode(btn, id) {
+      const text = document.getElementById(id).innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'copied!'; btn.style.color = 'var(--accent)';
+        setTimeout(() => { btn.textContent = 'copy'; btn.style.color = ''; }, 2000);
+      });
+    }
+  </script>
 </body>
 </html>
