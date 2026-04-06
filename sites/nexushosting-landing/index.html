@@ -353,6 +353,92 @@
     </div>
   </section>
 
+  <!-- ── Nexus Ecosystem ───────────────────────────────────────────── -->
+  <section class="section section-alt" id="ecosystem">
+    <div class="container">
+      <h2 class="section-title reveal">Part of something bigger.</h2>
+      <p class="section-sub reveal">Nexus Hosting is one piece of the Nexus ecosystem — a suite of federated, self-hosted products built on the same principles. No subscriptions. No lock-in. No central authority. Ever.</p>
+      <div class="eco-grid reveal">
+        <a class="eco-card eco-active" href="https://github.com/The-No-Hands-company/Nexus-Hosting" target="_blank" rel="noopener">
+          <div class="eco-tag">you are here</div>
+          <div class="eco-name">Nexus Hosting</div>
+          <div class="eco-desc">Federated web hosting — deploy once, replicate everywhere</div>
+          <div class="eco-status live">live</div>
+        </a>
+        <a class="eco-card" href="https://github.com/The-No-Hands-company/Nexus" target="_blank" rel="noopener">
+          <div class="eco-name">Nexus</div>
+          <div class="eco-desc">Privacy-first community chat — self-hosted Discord alternative</div>
+          <div class="eco-status live">live</div>
+        </a>
+        <a class="eco-card" href="https://github.com/The-No-Hands-company/nexus-computer" target="_blank" rel="noopener">
+          <div class="eco-name">Nexus.computer</div>
+          <div class="eco-desc">Your personal AI cloud computer — runs on your own hardware</div>
+          <div class="eco-status beta">in dev</div>
+        </a>
+        <a class="eco-card" href="https://github.com/The-No-Hands-company/Nexus-Deploy" target="_blank" rel="noopener">
+          <div class="eco-name">Nexus Deploy</div>
+          <div class="eco-desc">Federated app deployments — self-hosted Heroku, you own it</div>
+          <div class="eco-status beta">in dev</div>
+        </a>
+        <a class="eco-card" href="https://github.com/The-No-Hands-company/Nexus-cloud" target="_blank" rel="noopener">
+          <div class="eco-name">Nexus Cloud</div>
+          <div class="eco-desc">Federated file sync and storage — your data, your machine</div>
+          <div class="eco-status beta">in dev</div>
+        </a>
+        <a class="eco-card" href="https://github.com/The-No-Hands-company/Nexus-Vault" target="_blank" rel="noopener">
+          <div class="eco-name">Nexus Vault</div>
+          <div class="eco-desc">Self-hosted API key management with audit logs</div>
+          <div class="eco-status beta">in dev</div>
+        </a>
+        <a class="eco-card" href="https://github.com/The-No-Hands-company/Nexus-Network" target="_blank" rel="noopener">
+          <div class="eco-name">Nexus Network</div>
+          <div class="eco-desc">Live federation health dashboard — collective stats across all nodes</div>
+          <div class="eco-status beta">in dev</div>
+        </a>
+      </div>
+      <p class="eco-footer">All products are open source · free forever · no paywalls · <a href="https://github.com/The-No-Hands-company" style="color:var(--accent)">github.com/The-No-Hands-company</a></p>
+    </div>
+  </section>
+
+  <!-- ── Network Health ─────────────────────────────────────────────── -->
+  <section class="section" id="network-health">
+    <div class="container">
+      <h2 class="section-title reveal">The federation, live.</h2>
+      <p class="section-sub reveal">Every Nexus node that opts in reports its hardware totals once per minute. No personal data — just aggregate numbers. Watch the network grow.</p>
+      <div id="nexus-network-widget" class="reveal"></div>
+      <p class="network-note">No nodes reporting yet — the widget populates as operators opt in. <a href="https://github.com/The-No-Hands-company/Nexus-Network" style="color:var(--accent)" target="_blank" rel="noopener">Learn how it works →</a></p>
+    </div>
+  </section>
+
+  <style>
+    /* Ecosystem grid */
+    .eco-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:1.5rem}
+    .eco-card{display:block;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px 18px;text-decoration:none;color:inherit;transition:border-color 0.2s,transform 0.2s;position:relative}
+    .eco-card:hover{border-color:var(--border2);transform:translateY(-2px)}
+    .eco-active{border-color:rgba(0,229,255,0.3)}
+    .eco-tag{font-family:var(--mono);font-size:10px;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px}
+    .eco-name{font-size:15px;font-weight:600;color:#fff;margin-bottom:5px}
+    .eco-desc{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px}
+    .eco-status{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:0.4px}
+    .eco-status.live{background:rgba(29,158,117,0.15);color:#1D9E75}
+    .eco-status.beta{background:rgba(186,117,23,0.15);color:#BA7517}
+    .eco-footer{font-size:12px;color:var(--muted);text-align:center;margin-top:8px}
+    /* Network widget overrides for dark theme */
+    #nexus-network-widget > div{background:var(--bg3) !important;border-color:var(--border) !important}
+    .network-note{font-size:12px;color:var(--muted);margin-top:12px;text-align:center}
+  </style>
+
+  <script>
+    (function(){
+      const s=document.createElement('script');
+      s.setAttribute('data-target','nexus-network-widget');
+      s.setAttribute('data-api','https://network.nexus.computer/api/stats');
+      s.setAttribute('data-theme','dark');
+      s.src='https://network.nexus.computer/widget.js';
+      document.head.appendChild(s);
+    })();
+  </script>
+
   <section class="section">
     <div class="container">
       <div class="node-cta reveal">
