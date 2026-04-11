@@ -33,7 +33,7 @@ import { asyncHandler, AppError } from "../lib/errors";
 import { writeLimiter } from "../middleware/rateLimiter";
 import { hashIp } from "../lib/analyticsFlush";
 import { emailFormSubmission } from "../lib/email";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import logger from "../lib/logger";
 
 const router: IRouter = Router();
@@ -42,7 +42,7 @@ const router: IRouter = Router();
 const formSubmitLimiter = rateLimit({
   windowMs: 60_000,
   max: process.env.NODE_ENV === "production" ? 5 : 1000,
-  keyGenerator: (req) => req.ip ?? "unknown",
+  keyGenerator: (req) => ipKeyGenerator(req.ip),
   handler: (_req, res) => res.status(429).json({ error: "Too many submissions. Please wait." }),
   standardHeaders: "draft-7",
   legacyHeaders: false,
@@ -52,7 +52,7 @@ const formSubmitLimiter = rateLimit({
 const formSiteLimiter = rateLimit({
   windowMs: 60 * 60_000,
   max: process.env.NODE_ENV === "production" ? 3 : 1000,
-  keyGenerator: (req) => `${req.ip}:${req.params.domain ?? ""}:${req.params.formName ?? ""}`,
+  keyGenerator: (req) => `${ipKeyGenerator(req.ip)}:${req.params.domain ?? ""}:${req.params.formName ?? ""}`,
   handler: (_req, res) => res.status(429).json({ error: "Submission limit reached for this form. Please try again later." }),
   standardHeaders: "draft-7",
   legacyHeaders: false,

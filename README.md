@@ -206,7 +206,7 @@ pnpm run build
 
 ---
 
-## API Reference
+## API surface
 
 See [docs/API.md](./docs/API.md) for the full REST API reference.
 
@@ -232,6 +232,24 @@ See [docs/API.md](./docs/API.md) for the full REST API reference.
 | GET | `/federation/peers` | Federation peers (paginated) |
 | GET | `/federation/events` | Event log (paginated) |
 | GET | `/capacity/summary` | Network capacity |
+
+---
+
+## Public address contract
+
+Nexus Hosting consumes the Nexus Cloud address issuance flow to keep its advertised hostnames in sync. After requesting a public URL or website address via `/api/v1/addresses` on the cloud, the hosting node polls `/api/v1/domains/:domain` until `target.status` becomes `verified` before marking a custom domain live.
+
+```bash
+curl -X POST https://nexus.cloud/api/v1/addresses \
+  -H "Authorization: Bearer $NEXUS_CLOUD_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"toolId":"nexus-hosting","kind":"website","desiredHost":"node123.nexus.local"}'
+
+curl https://nexus.cloud/api/v1/domains/node123.nexus.local \
+  -H "Authorization: Bearer $NEXUS_CLOUD_TOKEN"
+```
+
+This ensures the Hosting node always reads the canonical address/exposure records before advertising them through Caddy/Traefik.
 
 ---
 

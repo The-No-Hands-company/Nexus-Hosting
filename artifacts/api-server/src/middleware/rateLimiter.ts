@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import slowDown from "express-slow-down";
 import { getRedisClient } from "../lib/redis";
 import logger from "../lib/logger";
@@ -120,9 +120,8 @@ export const userWriteLimiter = rateLimit({
   legacyHeaders: false,
   store,
   keyGenerator: (req) => {
-    // Use authenticated user ID if available, fall back to IP
     const user = (req as any).user as { id?: string } | undefined;
-    return user?.id ?? req.ip ?? "anonymous";
+    return user?.id ?? ipKeyGenerator(req.ip);
   },
   handler: makeHandler("Too many requests from this account. Please slow down.", "USER_RATE_LIMITED"),
   skip: (req) => !(req as any).user, // skip if not authenticated (IP limiter handles it)
@@ -137,7 +136,7 @@ export const deployLimiter = rateLimit({
   store,
   keyGenerator: (req) => {
     const user = (req as any).user as { id?: string } | undefined;
-    return `deploy:${user?.id ?? req.ip}`;
+    return `deploy:${user?.id ?? ipKeyGenerator(req.ip)}`;
   },
   handler: makeHandler("Deploy limit reached (20 per hour). Please wait before deploying again.", "DEPLOY_RATE_LIMITED"),
 });

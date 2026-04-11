@@ -30,6 +30,7 @@ import cloneRouter from "./clone";
 import nlplRouter from "./nlpl";
 import { router as abuseRouter } from "./abuse";
 import emailVerifyRouter from "./emailVerify";
+import cloudRouter from "./cloud";
 
 const router: IRouter = Router();
 
@@ -62,6 +63,7 @@ router.use(gitWebhookRouter);
 router.use(deploymentDiffRouter);
 router.use(cloneRouter);
 router.use(nlplRouter);
+router.use(cloudRouter);
 router.use("/abuse", abuseRouter);
 router.use(emailVerifyRouter);
 

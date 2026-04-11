@@ -7,11 +7,11 @@ import { writeLimiter, authLimiter } from "../middleware/rateLimiter";
 
 // Per-site-per-IP unlock limiter: max 5 attempts per 15 minutes
 // Prevents automated password guessing on password-protected sites
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 const unlockLimiter = rateLimit({
   windowMs: 15 * 60_000,
   max: process.env.NODE_ENV === "production" ? 5 : 1000,
-  keyGenerator: (req) => `${req.ip}:${req.params.id}`,
+  keyGenerator: (req) => `${ipKeyGenerator(req.ip)}:${req.params.id}`,
   handler: (_req, res) =>
     res.status(429).json({ error: "Too many unlock attempts. Try again in 15 minutes.", code: "UNLOCK_RATE_LIMITED" }),
   standardHeaders: "draft-7",
