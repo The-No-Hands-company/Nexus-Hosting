@@ -1,6 +1,6 @@
 # Nexus Hosting
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-24-green.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
@@ -342,4 +342,4 @@ The security model in brief: Ed25519 signatures on all federation messages, HMAC
 
 ## License
 
-[MIT](./LICENSE) — Copyright (c) 2025 The No Hands Company
+[AGPL-3.0-or-later](./LICENSE) — Copyright (c) 2025 The No Hands Company

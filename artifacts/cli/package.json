@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "NexusHosting CLI — deploy static sites to your Nexus Hosting node",
   "type": "module",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "author": "The No Hands Company <dev@nohands.company>",
   "homepage": "https://github.com/The-No-Hands-company/Nexus-Hosting",
   "repository": {
