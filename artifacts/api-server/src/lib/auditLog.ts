@@ -90,6 +90,6 @@ export async function auditLog(
     `);
   } catch (err) {
     // Audit log failure must never break the request — log and continue
-    logger.error({ err, action, actorId: user.id }, "[audit] Failed to write audit log entry");
+    logger.error({ err, action }, "[audit] Failed to write audit log entry");
   }
 }

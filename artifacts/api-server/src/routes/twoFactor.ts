@@ -142,7 +142,7 @@ router.post("/auth/2fa/verify", writeLimiter, asyncHandler(async (req: Request, 
     backupCodes: hashedBackups,
   });
 
-  logger.info({ userId: req.user.id }, "[2fa] Enabled");
+  logger.info({}, "[2fa] Enabled");
 
   res.json({
     enabled: true,
@@ -200,7 +200,7 @@ router.post("/auth/2fa/validate", authLimiter, asyncHandler(async (req: Request,
   });
 
   if (consumed !== false) {
-    logger.warn({ userId: req.user.id, remaining: consumed }, "[2fa] Backup code used");
+    logger.warn({ remaining: consumed }, "[2fa] Backup code used");
     res.json({ valid: true, method: "backup", remainingBackupCodes: consumed });
     return;
   }
@@ -232,7 +232,7 @@ router.post("/auth/2fa/disable", writeLimiter, asyncHandler(async (req: Request,
   }
 
   await db.delete(totpCredentialsTable).where(eq(totpCredentialsTable.userId, req.user.id));
-  logger.info({ userId: req.user.id }, "[2fa] Disabled");
+  logger.info({}, "[2fa] Disabled");
   res.json({ disabled: true });
 }));
 
@@ -308,7 +308,7 @@ router.post("/auth/2fa/complete", authLimiter, asyncHandler(async (req: Request,
   const newSid = await createSession(cleanSession);
   setSessionCookie(res as any, newSid);
 
-  logger.info({ userId: req.user.id, method: usedBackup ? "backup" : "totp" }, "[2fa] Challenge completed");
+  logger.info({ method: usedBackup ? "backup" : "totp" }, "[2fa] Challenge completed");
   res.json({ authenticated: true, method: usedBackup ? "backup" : "totp" });
 }));
 

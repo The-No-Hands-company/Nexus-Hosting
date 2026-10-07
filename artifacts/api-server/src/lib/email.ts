@@ -52,7 +52,7 @@ async function enqueue(opts: { to: string; subject: string; html: string; text: 
   try {
     await db.insert(emailQueueTable).values(opts);
   } catch (err) {
-    logger.error({ err, to: opts.to }, "[email] Failed to enqueue");
+    logger.error({ err }, "[email] Failed to enqueue");
   }
 }
 
@@ -75,21 +75,21 @@ export async function processEmailQueue(): Promise<void> {
         .set({ sentAt: new Date() })
         .where(eq(emailQueueTable.id, item.id));
 
-      logger.info({ to: item.to, subject: item.subject }, "[email] Sent");
+      logger.info({ subject: item.subject }, "[email] Sent");
     } catch (err: any) {
       const attempts = item.attempts + 1;
       if (attempts >= item.maxAttempts) {
         await db.update(emailQueueTable)
           .set({ attempts, failedAt: new Date(), error: err.message })
           .where(eq(emailQueueTable.id, item.id));
-        logger.error({ to: item.to, attempts }, "[email] Permanently failed");
+        logger.error({ attempts }, "[email] Permanently failed");
       } else {
         const delay = BACKOFF[attempts - 1] ?? BACKOFF[BACKOFF.length - 1]!;
         const nextAttempt = new Date(Date.now() + delay);
         await db.update(emailQueueTable)
           .set({ attempts, nextAttempt, error: err.message })
           .where(eq(emailQueueTable.id, item.id));
-        logger.warn({ to: item.to, attempts, nextAttemptIn: delay }, "[email] Retrying");
+        logger.warn({ attempts, nextAttemptIn: delay }, "[email] Retrying");
       }
     }
   }

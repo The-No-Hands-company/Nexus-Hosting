@@ -86,11 +86,11 @@ router.post("/sites/:id/invitations", tokenLimiter, asyncHandler(async (req: Req
   const inviterName = req.user.firstName ?? req.user.email ?? "A site owner";
   emailInvitation({ to: email, inviterName, siteName: site.name, domain: site.domain, role, acceptUrl })
     .then(sent => {
-      if (!sent) logger.warn({ email, siteId }, "[invitation] Email not sent (SMTP not configured)");
+      if (!sent) logger.warn({ siteId }, "[invitation] Email not sent (SMTP not configured)");
     })
     .catch(() => {});
 
-  logger.info({ email, siteId, role }, "[invitation] Invitation created");
+  logger.info({ siteId, role }, "[invitation] Invitation created");
   res.status(201).json({
     id: invitation.id,
     email,
@@ -235,7 +235,7 @@ router.post("/invitations/:token/accept", writeLimiter, asyncHandler(async (req:
       .returning();
   });
 
-  logger.info({ siteId: inv.siteId, userId: req.user.id, role: inv.role }, "[invitation] Accepted");
+  logger.info({ siteId: inv.siteId, role: inv.role }, "[invitation] Accepted");
   res.json({ accepted: true, member });
 }));
 

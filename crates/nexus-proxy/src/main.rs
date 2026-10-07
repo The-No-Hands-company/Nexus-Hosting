@@ -162,7 +162,10 @@ async fn main() -> Result<()> {
         )
         .layer(
             tower_http::trace::TraceLayer::new_for_http()
-                .make_span_with(tower_http::trace::DefaultMakeSpan::new())
+                // method only: no URI or query string in logs
+                .make_span_with(|req: &axum::http::Request<_>| {
+                    tracing::info_span!("request", method = %req.method())
+                })
         );
 
     // Metrics endpoint on a separate port

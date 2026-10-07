@@ -77,7 +77,7 @@ router.post("/federation/blocks", requireAdmin, writeLimiter, asyncHandler(async
     .set({ status: "inactive" })
     .where(eq(nodesTable.domain, nodeDomain));
 
-  logger.info({ nodeDomain, reason, blockedBy: req.user?.id }, "[blocklist] Node blocked");
+  logger.info({ nodeDomain, reason }, "[blocklist] Node blocked");
 
   res.status(201).json({ block, message: `${nodeDomain} is now blocked from federating with this node.` });
 }));
@@ -95,7 +95,7 @@ router.delete("/federation/blocks/:domain", requireAdmin, writeLimiter, asyncHan
 
   blockedDomains.delete(domain);
 
-  logger.info({ domain, unblockedBy: req.user?.id }, "[blocklist] Node unblocked");
+  logger.info({ domain }, "[blocklist] Node unblocked");
 
   res.json({ message: `${domain} has been unblocked and can federate with this node again.` });
 }));

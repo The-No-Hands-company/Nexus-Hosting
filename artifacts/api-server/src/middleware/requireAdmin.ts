@@ -57,7 +57,7 @@ export async function requireAdmin(
     const admin = await isAdminUser(req.user.id);
     if (!admin) {
       logger.warn(
-        { userId: req.user.id, path: req.path },
+        { path: req.path },
         "[rbac] Non-admin attempted to access admin endpoint",
       );
       next(AppError.forbidden("Admin access required"));

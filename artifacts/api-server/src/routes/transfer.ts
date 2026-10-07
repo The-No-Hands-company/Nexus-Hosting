@@ -88,7 +88,7 @@ router.post("/sites/:id/transfer", writeLimiter, asyncHandler(async (req: Reques
   const token = crypto.randomBytes(32).toString("base64url");
   await storeTransfer(token, { siteId, fromUserId: req.user.id, toEmail, createdAt: Date.now() });
 
-  logger.info({ siteId, from: req.user.id, to: toEmail }, "[transfer] Initiated");
+  logger.info({ siteId }, "[transfer] Initiated");
 
   res.json({
     token,
@@ -123,7 +123,7 @@ router.post("/sites/:id/transfer/accept", writeLimiter, asyncHandler(async (req:
   await deleteTransfer(token);
   invalidateSiteCache(siteId);
 
-  logger.info({ siteId, newOwner: req.user.id }, "[transfer] Completed");
+  logger.info({ siteId }, "[transfer] Completed");
   res.json({ transferred: true, newOwnerId: req.user.id });
 }));
 
