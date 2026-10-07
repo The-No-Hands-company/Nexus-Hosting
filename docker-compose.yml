@@ -87,7 +87,7 @@ services:
     # Internal traffic (proxy/app -> minio:9000) does go over the Docker
     # network and needs nothing published; the public storage endpoint does.
     ports:
-      - "9010:9000"   # S3 API — reached by the storage.tnhc.dev tunnel ingress
+      - "127.0.0.1:9010:9000"   # S3 API — reached by the storage.tnhc.dev tunnel ingress
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -262,8 +262,8 @@ services:
         max-file: "1"
         compress: "false"
     ports:
-      - "8090:8090"       # Site-serving port (Caddy routes site traffic here)
-      - "9091:9091"       # Prometheus metrics
+      - "127.0.0.1:8090:8090"       # Site-serving port (Caddy routes site traffic here)
+      - "127.0.0.1:9091:9091"       # Prometheus metrics
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nexus}
 
