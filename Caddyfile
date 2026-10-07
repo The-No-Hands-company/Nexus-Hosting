@@ -52,10 +52,7 @@
         -Server
     }
 
-    log {
-        output stdout
-        format json
-    }
+    # Access logging is intentionally off (privacy: zero retention); error logging stays on.
 }
 
 # ── TypeScript-only mode (no Rust proxy) ─────────────────────────────────────
