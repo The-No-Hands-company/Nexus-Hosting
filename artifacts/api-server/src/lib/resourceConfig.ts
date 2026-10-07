@@ -1,3 +1,4 @@
+import logger from "./logger";
 /**
  * Low-resource mode configuration.
  *
@@ -90,7 +91,7 @@ export const GOSSIP_INTERVAL_MS = LOW_RESOURCE
 export const NEXUS_STATIC_ONLY = process.env.NEXUS_STATIC_ONLY === "true";
 
 if (NEXUS_STATIC_ONLY) {
-  console.warn(
+  logger.warn(
     "[config] NEXUS_STATIC_ONLY=true — dynamic site hosting disabled. " +
     "This node only serves static sites (HTML/CSS/JS)."
   );
@@ -98,8 +99,7 @@ if (NEXUS_STATIC_ONLY) {
 
 if (LOW_RESOURCE) {
   // Log once at startup so operators know the mode is active
-  // Using console directly since the logger may not be initialised yet
-  console.warn(
+  logger.warn(
     "[config] LOW_RESOURCE=true — running in low-resource mode. " +
     "DB pool: 5, caches: 500/2K, flush: 5min, health: 10min. " +
     "All API routes and federation remain fully functional."

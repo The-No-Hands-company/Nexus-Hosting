@@ -77,3 +77,30 @@ describe("log privacy", { timeout: 120_000 }, () => {
     expect(out).toContain('"route":"-"');
   });
 });
+
+describe("request log", { timeout: 120_000 }, () => {
+  it("a request to a token-bearing path logs the route template only", async () => {
+    const express = (await import("express")).default;
+    const pinoHttp = (await import("pino-http")).default;
+    const { requestLogOptions } = await import("../../src/lib/requestLog");
+    const { default: lg } = await import("../../src/lib/logger");
+    const app = express();
+    app.use(pinoHttp(requestLogOptions(lg as any)));
+    app.get("/invitations/:token/accept", (_req, res) => void res.status(200).json({ ok: true }));
+    app.get("/boom/:token", (_req, _res, next) => next(new Error(`secret ${ADDR}`)));
+    app.use((err: any, _req: any, res: any, _next: any) => void res.status(500).json({}));
+    const server = app.listen(0);
+    const port = (server.address() as any).port;
+    try {
+      await fetch(`http://127.0.0.1:${port}/invitations/tok-canary-123/accept?x=tok-canary-123`);
+      await fetch(`http://127.0.0.1:${port}/boom/tok-canary-123`);
+      await new Promise((r) => setTimeout(r, 100));
+    } finally {
+      server.close();
+    }
+    const out = lines.join("");
+    expect(out).toContain("/invitations/:token/accept");
+    expect(out).not.toContain("tok-canary-123");
+    expect(out).not.toContain(ADDR);
+  });
+});

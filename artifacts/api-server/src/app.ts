@@ -7,6 +7,7 @@ import compression from "compression";
 import { COMPRESSION_LEVEL } from "./lib/resourceConfig";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
+import { requestLogOptions } from "./lib/requestLog";
 import { randomUUID } from "crypto";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import { tokenAuthMiddleware } from "./middleware/tokenAuth";
@@ -93,24 +94,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // ── Structured request logging ────────────────────────────────────────────────
 app.use(
-  pinoHttp({
-    logger,
-    quietReqLogger: true,
-    customLogLevel: (_req, res, err) => {
-      if (err || res.statusCode >= 500) return "error";
-      if (res.statusCode >= 400) return "warn";
-      if (res.statusCode >= 300) return "silent";
-      return "info";
-    },
-    customSuccessMessage: (req, res) =>
-      `${req.method} ${(req.url ?? "").split("?")[0]} → ${res.statusCode}`,
-    customErrorMessage: (_req, res, err) =>
-      `${res.statusCode} — ${(err as { name?: string })?.name ?? "error"}`,
-    serializers: {
-      req: (req) => ({ method: req.method, url: (req.url ?? "").split("?")[0], id: req.id }),
-      res: (res) => ({ statusCode: res.statusCode }),
-    },
-  }),
+  pinoHttp(requestLogOptions(logger)),
 );
 
 // ── Body parsing (with size limits) ──────────────────────────────────────────

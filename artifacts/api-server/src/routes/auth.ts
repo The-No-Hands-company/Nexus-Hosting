@@ -22,6 +22,7 @@ import {
   type SessionData,
 } from "../lib/auth";
 import { authLimiter } from "../middleware/rateLimiter";
+import logger, { errInfo } from "../lib/logger";
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
 
@@ -291,7 +292,7 @@ router.post(
       const sid = await createSession(sessionData);
       res.json(ExchangeMobileAuthorizationCodeResponse.parse({ token: sid }));
     } catch (err) {
-      console.error("Mobile token exchange error:", err);
+      logger.error(errInfo(err), "Mobile token exchange error");
       res.status(500).json({ error: "Token exchange failed" });
     }
   },

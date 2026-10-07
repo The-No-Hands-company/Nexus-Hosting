@@ -6,7 +6,7 @@ import {
 } from "@workspace/api-zod";
 import { storage, ObjectNotFoundError } from "../lib/storageProvider";
 import { ObjectPermission } from "../lib/objectAcl";
-import logger from "../lib/logger";
+import logger, { errInfo } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -68,7 +68,7 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
       }),
     );
   } catch (error) {
-    console.error("Error generating upload URL:", error);
+    logger.error(errInfo(error), "Error generating upload URL");
     res.status(500).json({ error: "Failed to generate upload URL" });
   }
 });
