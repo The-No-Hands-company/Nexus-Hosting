@@ -14,7 +14,7 @@ import { type Request, type Response, type NextFunction } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { AppError } from "../lib/errors";
-import logger from "../lib/logger";
+import logger, { routeOf } from "../lib/logger";
 
 /** Parse the ADMIN_USER_IDS env var into a Set for O(1) lookup */
 function getAdminUserIds(): Set<string> {
@@ -57,7 +57,7 @@ export async function requireAdmin(
     const admin = await isAdminUser(req.user.id);
     if (!admin) {
       logger.warn(
-        { path: req.path },
+        { route: routeOf(req) },
         "[rbac] Non-admin attempted to access admin endpoint",
       );
       next(AppError.forbidden("Admin access required"));

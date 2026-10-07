@@ -29,7 +29,7 @@ router.get("/.well-known/acme-challenge/:token", (req: Request, res: Response) =
   const token = req.params.token as string;
   const keyAuthorization = acmeChallenges.get(token);
   if (keyAuthorization) {
-    logger.debug({ token }, "[acme] Serving HTTP-01 challenge");
+    logger.debug("[acme] Serving HTTP-01 challenge");
     res.setHeader("Content-Type", "text/plain");
     res.send(keyAuthorization);
     return;

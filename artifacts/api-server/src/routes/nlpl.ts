@@ -157,7 +157,7 @@ router.post(
         const downloadUrl = await storage.getDownloadUrl(file.objectPath, 300);
         const response = await fetch(downloadUrl, { signal: AbortSignal.timeout(30_000) });
         if (!response.ok) {
-          logger.warn({ siteId, filePath: file.filePath }, "[nlpl] Failed to download file");
+          logger.warn({ siteId }, "[nlpl] Failed to download file");
           continue;
         }
         const fileDest = path.join(workDir, file.filePath);
@@ -165,7 +165,7 @@ router.post(
         const buffer = Buffer.from(await response.arrayBuffer());
         fs.writeFileSync(fileDest, buffer);
       } catch (err) {
-        logger.warn({ siteId, filePath: file.filePath, err }, "[nlpl] File extraction error");
+        logger.warn({ siteId, err }, "[nlpl] File extraction error");
       }
     }
 

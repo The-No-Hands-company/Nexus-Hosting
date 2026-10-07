@@ -26,7 +26,7 @@ const router: IRouter = Router();
 function failObjectStream(res: Response, objectPath: string, error: unknown): void {
   const notFound = error instanceof ObjectNotFoundError;
   if (!notFound) {
-    logger.error({ objectPath, err: error }, "Failed to stream object from storage");
+    logger.error({ err: error }, "Failed to stream object from storage");
   }
 
   if (res.headersSent) {

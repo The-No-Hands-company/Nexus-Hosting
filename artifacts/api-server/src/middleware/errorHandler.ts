@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../lib/errors";
-import logger from "../lib/logger";
+import logger, { errInfo, routeOf } from "../lib/logger";
 
 export function globalErrorHandler(
   err: unknown,
@@ -12,7 +12,7 @@ export function globalErrorHandler(
   const isProd = process.env.NODE_ENV === "production";
 
   if (err instanceof AppError && err.isOperational) {
-    logger.warn({ err, requestId, path: req.path, method: req.method }, err.message);
+    logger.warn({ err, requestId, route: routeOf(req), method: req.method }, err.message);
     res.status(err.statusCode).json({
       error: { message: err.message, code: err.code, requestId },
     });
@@ -20,7 +20,7 @@ export function globalErrorHandler(
   }
 
   logger.error(
-    { err, requestId, path: req.path, method: req.method },
+    { err, requestId, route: routeOf(req), method: req.method },
     "Unhandled error",
   );
 

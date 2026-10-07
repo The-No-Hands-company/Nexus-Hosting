@@ -126,9 +126,9 @@ export async function deliverWebhook(payload: WebhookPayload): Promise<void> {
     }).returning({ id: webhookDeliveriesTable.id });
 
     if (result.success) {
-      logger.debug({ url: hook.url, event: payload.event }, "[webhook] Delivered");
+      logger.debug({ event: payload.event }, "[webhook] Delivered");
     } else {
-      logger.warn({ url: hook.url, event: payload.event, status: result.statusCode }, "[webhook] Failed — queued for retry");
+      logger.warn({ event: payload.event, status: result.statusCode }, "[webhook] Failed — queued for retry");
     }
   }
 
@@ -137,7 +137,7 @@ export async function deliverWebhook(payload: WebhookPayload): Promise<void> {
   for (const url of envUrls) {
     const result = await attemptDelivery(url, null, payload, signature);
     if (!result.success) {
-      logger.warn({ url, event: payload.event }, "[webhook] Env webhook failed");
+      logger.warn({ event: payload.event }, "[webhook] Env webhook failed");
     }
   }
 }
@@ -199,7 +199,6 @@ export async function processWebhookRetries(): Promise<void> {
       deliveryId: delivery.id,
       attempt: nextAttempt,
       success: result.success,
-      url: hook.url,
     }, "[webhook] Retry processed");
   }
 }

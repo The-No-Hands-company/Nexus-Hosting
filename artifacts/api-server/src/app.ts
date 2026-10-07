@@ -105,7 +105,7 @@ app.use(
     customSuccessMessage: (req, res) =>
       `${req.method} ${(req.url ?? "").split("?")[0]} → ${res.statusCode}`,
     customErrorMessage: (_req, res, err) =>
-      `${res.statusCode} — ${(err as Error)?.message ?? "unknown error"}`,
+      `${res.statusCode} — ${(err as { name?: string })?.name ?? "error"}`,
     serializers: {
       req: (req) => ({ method: req.method, url: (req.url ?? "").split("?")[0], id: req.id }),
       res: (res) => ({ statusCode: res.statusCode }),

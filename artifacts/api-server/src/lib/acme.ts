@@ -181,7 +181,7 @@ export async function provisionCertificate(domain: string): Promise<ProvisionRes
           const parts = keyAuthorization.split(".");
           challengeToken = parts[0] ?? "";
           acmeChallenges.set(challengeToken, keyAuthorization);
-          logger.debug({ domain, token: challengeToken }, "[acme] HTTP-01 challenge registered");
+          logger.debug({ domain }, "[acme] HTTP-01 challenge registered");
         } else if (challenge.type === "dns-01") {
           // DNS-01: create _acme-challenge.<domain> TXT record
           const txtValue = dns01TxtValue(keyAuthorization);

@@ -12,7 +12,7 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { db, emailQueueTable } from "@workspace/db";
 import { isNull, lte, lt, eq, sql } from "drizzle-orm";
-import logger from "./logger";
+import logger, { errInfo } from "./logger";
 
 // ── Transport ──────────────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ async function enqueue(opts: { to: string; subject: string; html: string; text: 
   try {
     await db.insert(emailQueueTable).values(opts);
   } catch (err) {
-    logger.error({ err }, "[email] Failed to enqueue");
+    logger.error(errInfo(err), "[email] Failed to enqueue");
   }
 }
 
@@ -75,19 +75,19 @@ export async function processEmailQueue(): Promise<void> {
         .set({ sentAt: new Date() })
         .where(eq(emailQueueTable.id, item.id));
 
-      logger.info({ subject: item.subject }, "[email] Sent");
+      logger.info("[email] Sent");
     } catch (err: any) {
       const attempts = item.attempts + 1;
       if (attempts >= item.maxAttempts) {
         await db.update(emailQueueTable)
-          .set({ attempts, failedAt: new Date(), error: err.message })
+          .set({ attempts, failedAt: new Date(), error: String(err?.code ?? err?.name ?? "error") })
           .where(eq(emailQueueTable.id, item.id));
         logger.error({ attempts }, "[email] Permanently failed");
       } else {
         const delay = BACKOFF[attempts - 1] ?? BACKOFF[BACKOFF.length - 1]!;
         const nextAttempt = new Date(Date.now() + delay);
         await db.update(emailQueueTable)
-          .set({ attempts, nextAttempt, error: err.message })
+          .set({ attempts, nextAttempt, error: String(err?.code ?? err?.name ?? "error") })
           .where(eq(emailQueueTable.id, item.id));
         logger.warn({ attempts, nextAttemptIn: delay }, "[email] Retrying");
       }
