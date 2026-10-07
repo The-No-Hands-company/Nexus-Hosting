@@ -18,10 +18,11 @@ services:
           memory: 1g
           cpus: "1.0"
     logging:
-      driver: "json-file"
+      driver: "local"
       options:
-        max-size: "50m"
-        max-file: "5"
+        max-size: "5m"
+        max-file: "1"
+        compress: "false"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health/ready || exit 1"]
       interval: 30s
@@ -39,10 +40,11 @@ services:
           memory: 256m
           cpus: "0.5"
     logging:
-      driver: "json-file"
+      driver: "local"
       options:
-        max-size: "20m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "1"
+        compress: "false"
 
   db:
     restart: always
@@ -67,10 +69,11 @@ services:
         -c max_wal_size=4GB
         -c log_min_duration_statement=200
     logging:
-      driver: "json-file"
+      driver: "local"
       options:
-        max-size: "20m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "1"
+        compress: "false"
 
   redis:
     restart: always
@@ -88,10 +91,11 @@ services:
         --save 900 1
         --save 300 10
     logging:
-      driver: "json-file"
+      driver: "local"
       options:
-        max-size: "10m"
-        max-file: "2"
+        max-size: "5m"
+        max-file: "1"
+        compress: "false"
 
   minio:
     restart: always
@@ -100,7 +104,8 @@ services:
         limits:
           memory: 512m
     logging:
-      driver: "json-file"
+      driver: "local"
       options:
-        max-size: "20m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "1"
+        compress: "false"
