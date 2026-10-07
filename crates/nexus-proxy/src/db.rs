@@ -166,25 +166,33 @@ impl Db {
         )).collect())
     }
 
-    /// Record an analytics hit asynchronously.
+    /// Count one page view: a per-(site, path, UTC day) counter and nothing else.
+    /// No address, referrer, user agent or per-visit row is ever stored.
     /// Called in a spawned task — never blocks request handling.
-    pub async fn record_hit(
-        &self,
-        site_id: i32,
-        path: &str,
-        referrer: Option<&str>,
-        ip_hash: Option<&str>,
-        bytes_served: i64,
-    ) -> Result<()> {
+    pub async fn record_page_view(&self, site_id: i32, path: &str) -> Result<()> {
         let conn = self.pool.get().await?;
-        conn.execute(
-            r#"
-            INSERT INTO analytics_buffer (site_id, path, referrer, ip_hash, bytes_served)
-            VALUES ($1, $2, $3, $4, $5)
-            "#,
-            &[&site_id, &path, &referrer, &ip_hash, &bytes_served],
-        )
-        .await?;
+        conn.execute(PAGE_VIEW_SQL, &[&site_id, &path]).await?;
         Ok(())
+    }
+}
+
+/// The only analytics write the proxy performs. Two parameters: site_id, path.
+pub const PAGE_VIEW_SQL: &str = "INSERT INTO site_page_views (site_id, path, day, views) VALUES ($1, $2, current_date, 1) ON CONFLICT (site_id, path, day) DO UPDATE SET views = site_page_views.views + 1";
+
+#[cfg(test)]
+mod page_view_tests {
+    use super::PAGE_VIEW_SQL;
+
+    #[test]
+    fn page_view_sql_is_a_two_parameter_counter_upsert() {
+        assert_eq!(
+            PAGE_VIEW_SQL,
+            "INSERT INTO site_page_views (site_id, path, day, views) VALUES ($1, $2, current_date, 1) ON CONFLICT (site_id, path, day) DO UPDATE SET views = site_page_views.views + 1"
+        );
+        assert!(PAGE_VIEW_SQL.contains("$2") && !PAGE_VIEW_SQL.contains("$3"));
+        let lower = PAGE_VIEW_SQL.to_lowercase();
+        for banned in ["referrer", "ip_hash", "user_agent", "analytics_buffer"] {
+            assert!(!lower.contains(banned));
+        }
     }
 }

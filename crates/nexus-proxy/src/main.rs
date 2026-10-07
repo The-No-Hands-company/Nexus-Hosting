@@ -37,8 +37,9 @@
 //!    proxies the GET from S3/MinIO with streaming, sets correct Content-Type
 //!    and Cache-Control headers.
 //!
-//! 4. **Analytics** — inserts into `analytics_buffer` asynchronously via a
-//!    background queue; never blocks the response.
+//! 4. **Page views** — upserts a per-(site, path, day) counter into
+//!    `site_page_views` in a background task; never blocks the response and
+//!    never reads or stores an address, referrer or user agent.
 //!
 //! 5. **Geo routing** — reads region headers (Fly-Region, CF-IPCountry) and
 //!    optionally 302-redirects to a closer peer node.

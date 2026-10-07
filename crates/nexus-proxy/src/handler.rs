@@ -8,7 +8,7 @@
 //! 4. Check site visibility (public / private / password)
 //! 5. Resolve file path → CachedFile (cache → DB)
 //! 6. Stream from S3/MinIO with correct headers
-//! 7. Record analytics hit (background task)
+//! 7. Count a page view (background task; no addresses)
 
 use axum::{
     body::Body,
@@ -122,6 +122,7 @@ pub async fn serve_site(
     let raw_path = req.uri().path();
     let file_path = resolve_file_path(raw_path);
 
+    let mut served_path = file_path.clone();
     let file = match resolve_file(&state, site.site_id, &file_path).await {
         Some(f) => f,
         None => {
@@ -130,6 +131,7 @@ pub async fn serve_site(
             // Strict MPA/static sites (spa_routing=false) get a real 404.
             if file_path != "index.html" && site.spa_routing {
                 if let Some(f) = resolve_file(&state, site.site_id, "index.html").await {
+                    served_path = "index.html".to_string();
                     f
                 } else {
                     return not_found_response(&domain, &state.config.frame_ancestors);
@@ -141,7 +143,6 @@ pub async fn serve_site(
     };
 
     // ── Stream from object storage ─────────────────────────────────────────
-    let bytes_served = file.size_bytes;
     let content_type = file.content_type.clone();
     let cache_control = get_cache_control(&content_type);
 
@@ -180,17 +181,15 @@ pub async fn serve_site(
         }
     };
 
-    // ── Analytics (fire-and-forget) ────────────────────────────────────────
-    {
+    // ── Page-view count (fire-and-forget) ──────────────────────────────────
+    // Only real HTML pages, keyed by the file actually served, so SPA
+    // fallbacks cannot mint unbounded rows. No address/referrer is read.
+    if content_type.starts_with("text/html") {
         let db = state.db.clone();
-        let path = file_path.clone();
+        let path = if served_path.starts_with('/') { served_path.clone() } else { format!("/{}", served_path) };
         let site_id = site.site_id;
-        let referrer = req.headers()
-            .get("referer")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
         tokio::spawn(async move {
-            let _ = db.record_hit(site_id, &path, referrer.as_deref(), None, bytes_served).await;
+            let _ = db.record_page_view(site_id, &path).await;
         });
     }
 

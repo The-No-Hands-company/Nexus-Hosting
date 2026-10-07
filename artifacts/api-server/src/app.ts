@@ -103,11 +103,11 @@ app.use(
       return "info";
     },
     customSuccessMessage: (req, res) =>
-      `${req.method} ${req.url} → ${res.statusCode}`,
+      `${req.method} ${(req.url ?? "").split("?")[0]} → ${res.statusCode}`,
     customErrorMessage: (_req, res, err) =>
       `${res.statusCode} — ${(err as Error)?.message ?? "unknown error"}`,
     serializers: {
-      req: (req) => ({ method: req.method, url: req.url, id: req.id }),
+      req: (req) => ({ method: req.method, url: (req.url ?? "").split("?")[0], id: req.id }),
       res: (res) => ({ statusCode: res.statusCode }),
     },
   }),
