@@ -16,7 +16,11 @@ import path from "node:path";
  * makes on purpose rather than one that happens quietly. Raise the floor when
  * you raise the coverage.
  */
-const DOCUMENTED_FLOOR = 49;
+// 49 -> 47 (2026-10-07, zero-retention privacy work): /sites/{id}/analytics/stream
+// (live hit feed) and /sites/{id}/analytics/referrers were deleted because the
+// data they exposed is no longer collected. The routes and their spec entries
+// went together, so coverage did not get worse — two documented routes left.
+const DOCUMENTED_FLOOR = 47;
 
 function specPaths(): Set<string> {
   const raw = readFileSync(

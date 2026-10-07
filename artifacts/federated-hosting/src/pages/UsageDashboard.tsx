@@ -11,23 +11,17 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface SiteUsage {
   id: number; name: string; domain: string;
-  storageUsedMb: number; hitCount: number; monthlyBandwidthGb: number; status: string;
+  storageUsedMb: number; hitCount: number; status: string;
 }
 
 interface SiteAnalytics {
-  totalHits: number; totalBytesServed: number;
-  hourly: Array<{ hour: string; hits: number; bytesServed: number }>;
+  days: Array<{ day: string; path: string; views: number }>;
 }
 
 function formatBytes(mb: number): string {
   if (mb < 1) return `${(mb * 1024).toFixed(0)} KB`;
   if (mb < 1024) return `${mb.toFixed(1)} MB`;
   return `${(mb / 1024).toFixed(2)} GB`;
-}
-function formatBandwidth(gb: number): string {
-  if (gb < 0.001) return `${(gb * 1024 * 1024).toFixed(0)} KB`;
-  if (gb < 1) return `${(gb * 1024).toFixed(1)} MB`;
-  return `${gb.toFixed(2)} GB`;
 }
 function formatHits(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -83,26 +77,26 @@ export default function UsageDashboard() {
 
   const totalStorage = sites?.reduce((a, s) => a + (s.storageUsedMb ?? 0), 0) ?? 0;
   const totalHits    = sites?.reduce((a, s) => a + (s.hitCount ?? 0), 0) ?? 0;
-  const totalBw      = sites?.reduce((a, s) => a + (s.monthlyBandwidthGb ?? 0), 0) ?? 0;
 
-  // Merge hourly data across all sites into one unified chart
-  const mergedHourly = (() => {
+  // Merge per-day page views across all sites into one unified chart
+  const mergedDaily = (() => {
     if (!analyticsMap) return [];
-    const byHour = new Map<string, number>();
+    const byDay = new Map<string, number>();
     for (const analytics of Object.values(analyticsMap)) {
-      for (const bucket of analytics.hourly ?? []) {
-        byHour.set(bucket.hour, (byHour.get(bucket.hour) ?? 0) + bucket.hits);
+      for (const row of analytics.days ?? []) {
+        byDay.set(row.day, (byDay.get(row.day) ?? 0) + row.views);
       }
     }
-    return [...byHour.entries()]
+    return [...byDay.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([hour, hits]) => ({ hour, hits }));
+      .map(([day, views]) => ({ day, views }));
   })();
+  const views30d = mergedDaily.reduce((a, d) => a + d.views, 0);
 
   const statCards = [
     { label: "Total Storage",    value: formatBytes(totalStorage),         icon: HardDrive, color: "text-primary",        bg: "bg-primary/10 border-primary/20",         sub: `across ${sites?.length ?? 0} site${sites?.length !== 1 ? "s" : ""}` },
-    { label: "All-time Hits",    value: formatHits(totalHits),             icon: BarChart2, color: "text-secondary",       bg: "bg-secondary/10 border-secondary/20",      sub: "total page views" },
-    { label: "Monthly Bandwidth",value: formatBandwidth(totalBw),          icon: Zap,       color: "text-amber-400",       bg: "bg-amber-400/10 border-amber-400/20",      sub: "this month" },
+    { label: "All-time Views",   value: formatHits(totalHits),             icon: BarChart2, color: "text-secondary",       bg: "bg-secondary/10 border-secondary/20",      sub: "total page views" },
+    { label: "Views (30 days)",  value: formatHits(views30d),              icon: Zap,       color: "text-amber-400",       bg: "bg-amber-400/10 border-amber-400/20",      sub: "page views" },
     { label: "Active Sites",     value: String(sites?.filter(s => s.status === "active").length ?? 0), icon: Globe, color: "text-status-active", bg: "bg-status-active/10 border-status-active/20", sub: `of ${sites?.length ?? 0} total` },
   ];
 
@@ -110,7 +104,7 @@ export default function UsageDashboard() {
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Usage</h1>
-        <p className="text-muted-foreground mt-1 text-sm font-mono">Storage, bandwidth, and traffic across your sites</p>
+        <p className="text-muted-foreground mt-1 text-sm font-mono">Storage and page views across your sites</p>
       </div>
 
       {/* Summary cards */}
@@ -137,17 +131,17 @@ export default function UsageDashboard() {
       </div>
 
       {/* Traffic chart — built from per-site data, no admin endpoint */}
-      {mergedHourly.length > 0 && (
+      {mergedDaily.length > 0 && (
         <Card className="border-white/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-white text-base flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-primary" />Traffic (30 days)
             </CardTitle>
-            <CardDescription>Hourly hits across all your sites</CardDescription>
+            <CardDescription>Daily page views across all your sites</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={mergedHourly}>
+              <AreaChart data={mergedDaily}>
                 <defs>
                   <linearGradient id="hitsGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%"  stopColor="#00e5ff" stopOpacity={0.3} />
@@ -155,14 +149,14 @@ export default function UsageDashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="hour" tick={{ fill: "#6b7280", fontSize: 10 }} tickFormatter={v => v.slice(5, 10)} />
+                <XAxis dataKey="day" tick={{ fill: "#6b7280", fontSize: 10 }} tickFormatter={v => v.slice(5, 10)} />
                 <YAxis tick={{ fill: "#6b7280", fontSize: 10 }} width={36} />
                 <Tooltip
                   contentStyle={{ background: "#12121a", border: "1px solid rgba(255,255,255,.08)", borderRadius: "8px" }}
                   labelStyle={{ color: "#e4e4f0" }}
                   itemStyle={{ color: "#00e5ff" }}
                 />
-                <Area type="monotone" dataKey="hits" stroke="#00e5ff" fill="url(#hitsGrad)" strokeWidth={2} />
+                <Area type="monotone" dataKey="views" stroke="#00e5ff" fill="url(#hitsGrad)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -190,11 +184,7 @@ export default function UsageDashboard() {
                   </div>
                   <div className="text-right shrink-0 hidden sm:block">
                     <p className="text-white text-sm font-mono">{formatHits(site.hitCount)}</p>
-                    <p className="text-muted-foreground text-xs">hits</p>
-                  </div>
-                  <div className="text-right shrink-0 hidden md:block">
-                    <p className="text-white text-sm font-mono">{formatBandwidth(site.monthlyBandwidthGb)}</p>
-                    <p className="text-muted-foreground text-xs">bandwidth</p>
+                    <p className="text-muted-foreground text-xs">views</p>
                   </div>
                   <Link href={`/analytics/${site.id}`}>
                     <ArrowUpRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

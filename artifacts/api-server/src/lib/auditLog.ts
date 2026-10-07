@@ -9,7 +9,7 @@
  *   - what:   action name (e.g. "node.settings.update")
  *   - target: affected resource (e.g. { type: "node", id: 1 })
  *   - diff:   what changed (before/after values, with sensitive fields redacted)
- *   - meta:   request IP, user-agent, timestamp
+ *   - meta:   timestamp (no address, no user-agent — nothing identifying the caller's device or network)
  *
  * Usage:
  *   await auditLog(req, "site.delete", { type: "site", id: site.id }, { domain: site.domain });
@@ -32,8 +32,6 @@ export interface AuditLogEntry {
   targetType: string;
   targetId: string | null;
   metadata: Record<string, unknown>;
-  ipAddress: string | null;
-  userAgent: string | null;
 }
 
 // Fields that must never appear in audit diffs
@@ -59,7 +57,7 @@ function redactSensitive(obj: Record<string, unknown>): Record<string, unknown> 
 /**
  * Record a privileged action in the audit log.
  *
- * @param req     Express request (for actor + IP extraction)
+ * @param req     Express request (for actor extraction)
  * @param action  Dot-separated action name: "node.settings.update"
  * @param target  Affected resource
  * @param metadata  Additional context (before/after values, reason, etc.)
@@ -80,18 +78,15 @@ export async function auditLog(
     targetType: target.type,
     targetId:   target.id != null ? String(target.id) : null,
     metadata:   redactSensitive(metadata),
-    ipAddress:  req.ip ?? req.socket.remoteAddress ?? null,
-    userAgent:  req.headers["user-agent"] ?? null,
   };
 
   try {
     await db.execute(sql`
       INSERT INTO admin_audit_log
-        (actor_id, actor_email, action, target_type, target_id, metadata, ip_address, user_agent)
+        (actor_id, actor_email, action, target_type, target_id, metadata)
       VALUES
         (${entry.actorId}, ${entry.actorEmail}, ${entry.action}, ${entry.targetType},
-         ${entry.targetId}, ${JSON.stringify(entry.metadata)}::jsonb,
-         ${entry.ipAddress}, ${entry.userAgent})
+         ${entry.targetId}, ${JSON.stringify(entry.metadata)}::jsonb)
     `);
   } catch (err) {
     // Audit log failure must never break the request — log and continue

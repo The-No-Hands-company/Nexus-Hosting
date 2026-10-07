@@ -9,8 +9,6 @@ export const adminAuditLogTable = pgTable("admin_audit_log", {
   targetId:   text("target_id"),
   before:     text("before"),   // JSON string of previous state
   after:      text("after"),    // JSON string of new state
-  ip:         text("ip"),
-  userAgent:  text("user_agent"),
   createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("audit_log_actor_idx").on(t.actorId),

@@ -40,7 +40,6 @@ export const abuseReportsTable = pgTable("abuse_reports", {
   id:           serial("id").primaryKey(),
   siteId:       integer("site_id").notNull(),
   siteDomain:   text("site_domain").notNull(),
-  reporterIp:   text("reporter_ip"),
   reporterEmail: text("reporter_email"),
   reason:       abuseReasonEnum("reason").notNull(),
   description:  text("description"),
@@ -57,27 +56,6 @@ export const abuseReportsTable = pgTable("abuse_reports", {
 }, (t) => [
   index("abuse_reports_site_idx").on(t.siteId),
   index("abuse_reports_status_idx").on(t.status),
-]);
-
-// ── IP bans ────────────────────────────────────────────────────────────────────
-
-export const ipBanScopeEnum = pgEnum("ip_ban_scope", [
-  "api",        // Block from API (login, deploy, etc.)
-  "sites",      // Block from viewing hosted sites
-  "all",        // Block everything
-]);
-
-export const ipBansTable = pgTable("ip_bans", {
-  id:        serial("id").primaryKey(),
-  ipAddress: text("ip_address").notNull(),
-  cidrRange: text("cidr_range"),           // Optional CIDR for subnet bans
-  reason:    text("reason"),
-  scope:     ipBanScopeEnum("scope").notNull().default("all"),
-  bannedBy:  varchar("banned_by"),
-  expiresAt: timestamp("expires_at",  { withTimezone: true }), // null = permanent
-  createdAt: timestamp("created_at",  { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index("ip_bans_ip_idx").on(t.ipAddress),
 ]);
 
 // ── Node trust scores ─────────────────────────────────────────────────────────
@@ -109,5 +87,4 @@ export const nodeTrustTable = pgTable("node_trust", {
 ]);
 
 export type AbuseReport = typeof abuseReportsTable.$inferSelect;
-export type IpBan       = typeof ipBansTable.$inferSelect;
 export type NodeTrust   = typeof nodeTrustTable.$inferSelect;

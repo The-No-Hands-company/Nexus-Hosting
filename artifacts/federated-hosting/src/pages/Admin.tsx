@@ -34,7 +34,7 @@ interface AdminOverview {
     totalSites: number; activeSites: number; totalUsers: number;
     totalDeploys: number; totalNodes: number; activeNodes: number;
   };
-  analytics24h: { hits: number; bytesServed: number };
+  pageViews: { today: number; last7d: number };
   recentEvents: Array<{
     id: number; eventType: string; fromNodeDomain: string;
     toNodeDomain: string; verified: number; createdAt: string;
@@ -136,7 +136,7 @@ export default function AdminPage() {
   if (isLoading) return <LoadingState />;
   if (error || !data) return <ErrorState message="Failed to load admin overview." />;
 
-  const { node, summary, analytics24h, recentEvents, systemInfo } = data;
+  const { node, summary, pageViews, recentEvents, systemInfo } = data;
   const memUsedPct = Math.round((1 - systemInfo.freeMemMb / systemInfo.totalMemMb) * 100);
   const load = systemInfo.loadAvg[0]?.toFixed(2) ?? "0.00";
 
@@ -145,8 +145,8 @@ export default function AdminPage() {
     { label: "Active Nodes",   value: `${summary.activeNodes} / ${summary.totalNodes}`,   icon: Server,   color: "text-secondary",       bg: "bg-secondary/10 border-secondary/20" },
     { label: "Users",          value: summary.totalUsers,                                  icon: Users,    color: "text-amber-400",       bg: "bg-amber-400/10 border-amber-400/20" },
     { label: "Deploys",        value: summary.totalDeploys,                               icon: Zap,      color: "text-status-active",   bg: "bg-status-active/10 border-status-active/20" },
-    { label: "Hits (24h)",     value: analytics24h.hits.toLocaleString(),                 icon: TrendingUp,color: "text-primary",        bg: "bg-primary/10 border-primary/20" },
-    { label: "Bandwidth (24h)",value: formatBytes(analytics24h.bytesServed),              icon: Activity, color: "text-secondary",       bg: "bg-secondary/10 border-secondary/20" },
+    { label: "Views (today)",  value: pageViews.today.toLocaleString(),                    icon: TrendingUp,color: "text-primary",        bg: "bg-primary/10 border-primary/20" },
+    { label: "Views (7 days)", value: pageViews.last7d.toLocaleString(),                   icon: Activity, color: "text-secondary",       bg: "bg-secondary/10 border-secondary/20" },
   ];
 
   return (
@@ -378,9 +378,9 @@ function ModerationTab() {
   });
 
   const { data: bans } = useQuery({
-    queryKey: ["ip-bans"],
+    queryKey: ["tag-bans"],
     queryFn: async () => {
-      const r = await fetch(`${BASE}/api/admin/ip-bans`, { credentials: "include" });
+      const r = await fetch(`${BASE}/api/abuse/tag-bans`, { credentials: "include" });
       return r.json() as Promise<{ data: any[] }>;
     },
   });
@@ -408,20 +408,20 @@ function ModerationTab() {
 
   const banMutation = useMutation({
     mutationFn: async () => {
-      await fetch(`${BASE}/api/admin/ip-bans`, {
+      await fetch(`${BASE}/api/abuse/tag-bans`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ipAddress: banIp.trim(), reason: banReason, scope: "all" }),
+        body: JSON.stringify({ tag: banIp.trim(), reason: banReason || undefined }),
       });
     },
-    onSuccess: () => { setBanIp(""); setBanReason(""); qc.invalidateQueries({ queryKey: ["ip-bans"] }); },
+    onSuccess: () => { setBanIp(""); setBanReason(""); qc.invalidateQueries({ queryKey: ["tag-bans"] }); },
   });
 
   const unbanMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await fetch(`${BASE}/api/admin/ip-bans/${id}`, { method: "DELETE", credentials: "include" });
+    mutationFn: async (tag: string) => {
+      await fetch(`${BASE}/api/abuse/tag-bans/${encodeURIComponent(tag)}`, { method: "DELETE", credentials: "include" });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ip-bans"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tag-bans"] }),
   });
 
   return (
@@ -483,31 +483,31 @@ function ModerationTab() {
       <Card className="border-white/5">
         <CardHeader className="pb-3">
           <CardTitle className="text-white text-base flex items-center gap-2">
-            <Ban className="w-4 h-4 text-primary" />IP Bans
+            <Ban className="w-4 h-4 text-primary" />Client-tag bans (in memory, max 24 h)
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">
-            <input value={banIp} onChange={e => setBanIp(e.target.value)} placeholder="IP address (e.g. 1.2.3.4)"
+            <input value={banIp} onChange={e => setBanIp(e.target.value)} placeholder="Client tag (22 characters)"
               className="flex-1 bg-muted/20 border border-white/8 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/40" />
             <input value={banReason} onChange={e => setBanReason(e.target.value)} placeholder="Reason (optional)"
               className="flex-1 bg-muted/20 border border-white/8 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/40" />
             <Button size="sm" onClick={() => banMutation.mutate()} disabled={!banIp || banMutation.isPending}
-              className="shrink-0">Ban IP</Button>
+              className="shrink-0">Ban tag</Button>
           </div>
           {bans?.data?.length ? (
             <div className="space-y-1">
               {bans.data.map((b: any) => (
-                <div key={b.id} className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/10 border border-white/5 rounded-lg text-sm">
-                  <span className="font-mono text-white">{b.ipAddress}</span>
+                <div key={b.tag} className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/10 border border-white/5 rounded-lg text-sm">
+                  <span className="font-mono text-white">{b.tag}</span>
                   <span className="text-muted-foreground text-xs flex-1 truncate ml-2">{b.reason ?? "—"}</span>
-                  <span className="text-xs border border-white/10 px-1.5 py-0.5 rounded">{b.scope}</span>
+                  <span className="text-xs border border-white/10 px-1.5 py-0.5 rounded">until {format(new Date(b.expiresAt), "MMM d, HH:mm")}</span>
                   <Button size="sm" variant="ghost" className="h-6 text-xs text-red-400 hover:text-red-300"
-                    onClick={() => unbanMutation.mutate(b.id)}>Unban</Button>
+                    onClick={() => unbanMutation.mutate(b.tag)}>Unban</Button>
                 </div>
               ))}
             </div>
-          ) : <p className="text-muted-foreground text-sm">No active IP bans.</p>}
+          ) : <p className="text-muted-foreground text-sm">No active tag bans.</p>}
         </CardContent>
       </Card>
 
@@ -938,7 +938,7 @@ function ProcessesTab() {
 // ── Audit Log tab ─────────────────────────────────────────────────────────────
 function AuditLogTab() {
   const [page, setPage] = useState(1);
-  const { data } = useQuery<{ data: Array<{ id: number; actorEmail: string | null; action: string; targetType: string | null; targetId: string | null; metadata: Record<string, unknown> | null; ipAddress: string | null; createdAt: string }>; meta: { total: number; page: number; limit: number } }>({
+  const { data } = useQuery<{ data: Array<{ id: number; actorEmail: string | null; action: string; targetType: string | null; targetId: string | null; metadata: Record<string, unknown> | null; createdAt: string }>; meta: { total: number; page: number; limit: number } }>({
     queryKey: ["audit-log", page],
     queryFn: async () => {
       const r = await fetch(`${BASE}/api/admin/audit-log?page=${page}&limit=25`, { credentials: "include" });
@@ -971,7 +971,6 @@ function AuditLogTab() {
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
                   <span>{e.actorEmail ?? "system"}</span>
-                  {e.ipAddress && <span>· {e.ipAddress}</span>}
                   <span>· {format(new Date(e.createdAt), "MMM d, HH:mm")}</span>
                 </div>
               </div>

@@ -6,8 +6,6 @@ export const formSubmissionsTable = pgTable("form_submissions", {
   siteId:     integer("site_id").notNull().references(() => sitesTable.id, { onDelete: "cascade" }),
   formName:   text("form_name").notNull().default("contact"),
   data:       jsonb("data").notNull().$type<Record<string, string>>(),
-  ipHash:     text("ip_hash"),
-  userAgent:  text("user_agent"),
   spamScore:  real("spam_score").notNull().default(0),
   flagged:    integer("flagged").notNull().default(0),
   read:       integer("read").notNull().default(0),

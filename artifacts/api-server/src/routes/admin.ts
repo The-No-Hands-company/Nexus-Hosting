@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db, nodesTable, sitesTable, siteDeploymentsTable,
-  federationEventsTable, usersTable, siteAnalyticsTable, nodeTrustTable,
+  federationEventsTable, usersTable, sitePageViewsTable, nodeTrustTable,
 } from "@workspace/db";
 import { eq, count, sql, desc, gte, and } from "drizzle-orm";
 import { asyncHandler, AppError } from "../lib/errors";
@@ -39,15 +39,17 @@ router.get("/admin/overview", requireAdmin, asyncHandler(async (req: Request, re
   const [{ totalNodes }] = await db.select({ totalNodes: count() }).from(nodesTable);
   const [{ activeNodes }] = await db.select({ activeNodes: count() }).from(nodesTable).where(eq(nodesTable.status, "active"));
 
-  // Last 24h analytics
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [analytics24h] = await db
-    .select({
-      hits: sql<number>`coalesce(sum(${siteAnalyticsTable.hits}), 0)`,
-      bytesServed: sql<number>`coalesce(sum(${siteAnalyticsTable.bytesServed}), 0)`,
-    })
-    .from(siteAnalyticsTable)
-    .where(gte(siteAnalyticsTable.hour, since));
+  // Page views: the only analytics kept (daily counters, no visitor data)
+  const today   = new Date().toISOString().slice(0, 10);
+  const weekAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [viewsToday] = await db
+    .select({ views: sql<number>`coalesce(sum(${sitePageViewsTable.views}), 0)` })
+    .from(sitePageViewsTable)
+    .where(gte(sitePageViewsTable.day, today));
+  const [views7d] = await db
+    .select({ views: sql<number>`coalesce(sum(${sitePageViewsTable.views}), 0)` })
+    .from(sitePageViewsTable)
+    .where(gte(sitePageViewsTable.day, weekAgo));
 
   // Last 10 federation events
   const recentEvents = await db
@@ -90,9 +92,9 @@ router.get("/admin/overview", requireAdmin, asyncHandler(async (req: Request, re
       totalNodes: Number(totalNodes),
       activeNodes: Number(activeNodes),
     },
-    analytics24h: {
-      hits: Number(analytics24h?.hits ?? 0),
-      bytesServed: Number(analytics24h?.bytesServed ?? 0),
+    pageViews: {
+      today:  Number(viewsToday?.views ?? 0),
+      last7d: Number(views7d?.views ?? 0),
     },
     recentEvents,
     storageByOwner,
@@ -210,7 +212,7 @@ router.get("/admin/audit-log", requireAdmin, asyncHandler(async (req: Request, r
 
   const entries = await db.execute(sql`
     SELECT id, actor_id, actor_email, action, target_type, target_id,
-           metadata, ip_address, user_agent, created_at
+           metadata, created_at
     FROM admin_audit_log
     ORDER BY created_at DESC
     LIMIT ${limit} OFFSET ${offset}

@@ -119,21 +119,22 @@
       "30d": "30 hari"
     },
     "stats": {
-      "totalHits": "Total Kunjungan",
-      "uniqueVisitors": "Pengunjung Unik",
-      "bandwidth": "Bandwidth",
-      "allTimeHits": "Total Kunjungan Sepanjang Waktu"
+      "totalHits": "Total Tayangan",
+      "allTimeHits": "Total Tayangan Sepanjang Waktu",
+      "pagesViewed": "Halaman Dilihat",
+      "today": "Tayangan Hari Ini"
     },
-    "hitsOverTime": "Kunjungan Dari Waktu ke Waktu",
-    "hitsSubtitle": "Jumlah permintaan per bucket untuk periode yang dipilih",
+    "hitsOverTime": "Tayangan Halaman Dari Waktu ke Waktu",
+    "hitsSubtitle": "Tayangan halaman per hari untuk periode yang dipilih",
     "topPages": "Halaman Teratas",
-    "topPagesSubtitle": "Jalur file yang paling sering dilayani",
-    "topReferrers": "Perujuk Teratas",
-    "topReferrersSubtitle": "Dari mana lalu lintas Anda berasal",
+    "topPagesSubtitle": "Halaman paling banyak dilihat",
     "noData": "Belum ada data lalu lintas untuk periode ini.",
     "noPathData": "Belum ada data jalur.",
-    "noReferrerData": "Belum ada data perujuk.",
-    "direct": "(langsung)"
+    "perPage": "Tayangan per Halaman per Hari",
+    "perPageSubtitle": "Satu baris per halaman per hari. Tidak ada data pengunjung yang dikumpulkan.",
+    "colDay": "Hari",
+    "colPage": "Halaman",
+    "colViews": "Tayangan"
   },
   "tokens": {
     "title": "Token API",

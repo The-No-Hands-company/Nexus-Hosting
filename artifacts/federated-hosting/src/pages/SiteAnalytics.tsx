@@ -1,16 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@workspace/auth-web";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Cell,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { LoadingState, ErrorState } from "@/components/shared";
-import { ArrowLeft, TrendingUp, Globe, HardDrive, Eye, ExternalLink, Download, Radio } from "lucide-react";
+import { ArrowLeft, TrendingUp, FileText, Eye, ExternalLink, Download, CalendarDays } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { format, parseISO } from "date-fns";
@@ -19,23 +16,9 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 type Period = "24h" | "7d" | "30d";
 
-interface HourlyRow {
-  id: number;
-  siteId: number;
-  hour: string;
-  hits: number;
-  bytesServed: number;
-  uniqueIps: number;
-  topReferrers: string;
-  topPaths: string;
-}
-
+/** The whole analytics API: page views per page per UTC day. */
 interface AnalyticsResponse {
-  period: string;
-  totals: { hits: number; bytesServed: number; uniqueIps: number };
-  hourly: HourlyRow[];
-  topReferrers: Array<{ referrer: string; count: number }>;
-  topPaths: Array<{ path: string; count: number }>;
+  days: Array<{ day: string; path: string; views: number }>;
 }
 
 interface SiteInfo {
@@ -45,28 +28,11 @@ interface SiteInfo {
   hitCount: number;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+function formatDay(day: string): string {
+  try { return format(parseISO(day), "MMM d"); } catch { return day; }
 }
 
-function formatHour(iso: string, period: Period): string {
-  try {
-    const d = parseISO(iso);
-    if (period === "24h") return format(d, "HH:mm");
-    if (period === "7d")  return format(d, "EEE HH:mm");
-    return format(d, "MMM d");
-  } catch {
-    return iso;
-  }
-}
-
-// Translation keys, not labels. An i18n pass wrapped these in t(...) while
-// leaving them inside the string quotes — `"t("analytics.periods.24h")"` — which
-// is a syntax error and stopped the whole frontend bundle building. It cannot
-// simply be unquoted either: this is module scope, where the t() from
+// Translation keys, not labels: this is module scope, where the t() from
 // useTranslation does not exist. The key is stored and resolved at render.
 const PERIOD_OPTIONS: { labelKey: string; value: Period }[] = [
   { labelKey: "analytics.periods.24h", value: "24h" },
@@ -75,33 +41,11 @@ const PERIOD_OPTIONS: { labelKey: string; value: Period }[] = [
 ];
 
 const CHART_COLOR = "#00e5ff";
-const BAR_COLORS = ["#00e5ff", "#00b4d8", "#0096c7", "#0077b6", "#023e8a", "#03045e", "#7b2d8b", "#9d4edd", "#c77dff", "#e0aaff"];
 
 export default function SiteAnalytics() {
   const { id } = useParams<{ id: string }>();
-  const { isAuthenticated } = useAuth();
-  const [period, setPeriod] = useState<Period>("24h");
+  const [period, setPeriod] = useState<Period>("7d");
   const { t } = useTranslation();
-
-  // Real-time hit counter via SSE
-  const [liveHits, setLiveHits] = useState(0);
-  const [isLive, setIsLive] = useState(false);
-  const sseRef = useRef<EventSource | null>(null);
-
-  useEffect(() => {
-    if (!id || !isAuthenticated) return;
-    const es = new EventSource(`${BASE}/api/sites/${id}/analytics/stream`, { withCredentials: true });
-    sseRef.current = es;
-    es.onopen = () => setIsLive(true);
-    es.onmessage = (e) => {
-      try {
-        const d = JSON.parse(e.data);
-        if (d.path) setLiveHits(n => n + 1);
-      } catch {}
-    };
-    es.onerror = () => setIsLive(false);
-    return () => { es.close(); setIsLive(false); };
-  }, [id, isAuthenticated]);
 
   const { data: site, isLoading: siteLoading } = useQuery<SiteInfo>({
     queryKey: ["site", id],
@@ -127,68 +71,43 @@ export default function SiteAnalytics() {
     refetchInterval: 60_000,
   });
 
-  const { data: referrers } = useQuery<{ referrers: Array<{ referrer: string; hits: number }> }>({
-    queryKey: ["analytics-referrers", id, period],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/sites/${id}/analytics/referrers?period=${period}`, { credentials: "include" });
-      return r.ok ? r.json() : { referrers: [] };
-    },
-    enabled: Boolean(id),
-    staleTime: 300_000,
-  });
-
   const exportCSV = async () => {
     const r = await fetch(`${BASE}/api/sites/${id}/analytics/export?period=${period}`, { credentials: "include" });
     if (!r.ok) return;
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url;
-    a.download = `analytics-${site?.domain ?? id}-${period}.csv`; a.click();
+    a.download = `page-views-${site?.domain ?? id}-${period}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
+
+  const rows = data?.days ?? [];
+
+  const { chartData, totalViews, pageCount, todayViews, topPages } = useMemo(() => {
+    const byDay = new Map<string, number>();
+    const byPath = new Map<string, number>();
+    for (const r of rows) {
+      byDay.set(r.day, (byDay.get(r.day) ?? 0) + r.views);
+      byPath.set(r.path, (byPath.get(r.path) ?? 0) + r.views);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    return {
+      chartData: [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, views]) => ({ label: formatDay(day), views })),
+      totalViews: rows.reduce((a, r) => a + r.views, 0),
+      pageCount: byPath.size,
+      todayViews: byDay.get(today) ?? 0,
+      topPages: [...byPath.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8),
+    };
+  }, [rows]);
 
   if (siteLoading || isLoading) return <LoadingState />;
   if (error) return <ErrorState message="Failed to load analytics data." />;
 
-  const chartData = (data?.hourly ?? []).map((row) => ({
-    label: formatHour(row.hour, period),
-    hits: Number(row.hits),
-    bytes: Number(row.bytesServed),
-  }));
-
-  const totals = data?.totals ?? { hits: 0, bytesServed: 0, uniqueIps: 0 };
-  const topReferrers = data?.topReferrers ?? [];
-  const topPaths = data?.topPaths ?? [];
-
   const statCards = [
-    {
-      title: t("analytics.stats.totalHits"),
-      value: totals.hits.toLocaleString(),
-      icon: Eye,
-      color: "text-primary",
-      bg: "bg-primary/10 border-primary/20",
-    },
-    {
-      title: t("analytics.stats.uniqueVisitors"),
-      value: totals.uniqueIps.toLocaleString(),
-      icon: Globe,
-      color: "text-secondary",
-      bg: "bg-secondary/10 border-secondary/20",
-    },
-    {
-      title: t("analytics.stats.bandwidth"),
-      value: formatBytes(totals.bytesServed),
-      icon: HardDrive,
-      color: "text-amber-400",
-      bg: "bg-amber-400/10 border-amber-400/20",
-    },
-    {
-      title: t("analytics.stats.allTimeHits"),
-      value: (site?.hitCount ?? 0).toLocaleString(),
-      icon: TrendingUp,
-      color: "text-status-active",
-      bg: "bg-status-active/10 border-status-active/20",
-    },
+    { title: t("analytics.stats.totalHits"), value: totalViews.toLocaleString(), icon: Eye, color: "text-primary", bg: "bg-primary/10 border-primary/20" },
+    { title: t("analytics.stats.pagesViewed"), value: pageCount.toLocaleString(), icon: FileText, color: "text-secondary", bg: "bg-secondary/10 border-secondary/20" },
+    { title: t("analytics.stats.today"), value: todayViews.toLocaleString(), icon: CalendarDays, color: "text-amber-400", bg: "bg-amber-400/10 border-amber-400/20" },
+    { title: t("analytics.stats.allTimeHits"), value: (site?.hitCount ?? 0).toLocaleString(), icon: TrendingUp, color: "text-status-active", bg: "bg-status-active/10 border-status-active/20" },
   ];
 
   return (
@@ -218,20 +137,10 @@ export default function SiteAnalytics() {
             </a>
           )}
         </div>
-        {/* Live hit counter */}
-        <div className="flex items-center gap-3">
-          {isLive && (
-            <div className="flex items-center gap-1.5 text-xs text-green-400 bg-green-400/10 px-3 py-1.5 rounded-full border border-green-400/20">
-              <Radio className="w-3 h-3 animate-pulse" />
-              <span className="font-mono font-semibold">{liveHits}</span>
-              <span>live hits</span>
-            </div>
-          )}
-          <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5 border-white/10 text-muted-foreground hover:text-white">
-            <Download className="w-3.5 h-3.5" />
-            Export CSV
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5 border-white/10 text-muted-foreground hover:text-white">
+          <Download className="w-3.5 h-3.5" />
+          Export CSV
+        </Button>
         {/* Period selector */}
         <div className="flex gap-1 bg-muted/30 p-1 rounded-xl border border-white/5">
           {PERIOD_OPTIONS.map((opt) => (
@@ -255,12 +164,7 @@ export default function SiteAnalytics() {
         {statCards.map((card, i) => {
           const Icon = card.icon;
           return (
-            <motion.div
-              key={card.title}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.07 }}
-            >
+            <motion.div key={card.title} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}>
               <Card className={`border ${card.bg}`}>
                 <CardContent className="p-5">
                   <div className="flex items-center gap-3 mb-3">
@@ -277,7 +181,7 @@ export default function SiteAnalytics() {
         })}
       </div>
 
-      {/* Hits over time chart */}
+      {/* Views per day chart */}
       <Card className="border-white/5">
         <CardHeader>
           <CardTitle className="text-white text-lg">{t("analytics.hitsOverTime")}</CardTitle>
@@ -299,13 +203,13 @@ export default function SiteAnalytics() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                 <XAxis dataKey="label" tick={{ fill: "#666", fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fill: "#666", fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis allowDecimals={false} tick={{ fill: "#666", fontSize: 11 }} tickLine={false} axisLine={false} />
                 <Tooltip
                   contentStyle={{ background: "#12121a", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8 }}
                   labelStyle={{ color: "#fff" }}
                   itemStyle={{ color: CHART_COLOR }}
                 />
-                <Area type="monotone" dataKey="hits" stroke={CHART_COLOR} strokeWidth={2}
+                <Area type="monotone" dataKey="views" stroke={CHART_COLOR} strokeWidth={2}
                   fill="url(#hitsGrad)" dot={false} activeDot={{ r: 4, fill: CHART_COLOR }} />
               </AreaChart>
             </ResponsiveContainer>
@@ -313,38 +217,28 @@ export default function SiteAnalytics() {
         </CardContent>
       </Card>
 
-      {/* Top paths + referrers */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top paths */}
+        {/* Top pages */}
         <Card className="border-white/5">
           <CardHeader>
             <CardTitle className="text-white text-lg">{t("analytics.topPages")}</CardTitle>
             <CardDescription>{t("analytics.topPagesSubtitle")}</CardDescription>
           </CardHeader>
           <CardContent>
-            {topPaths.length === 0 ? (
+            {topPages.length === 0 ? (
               <p className="text-muted-foreground text-sm">{t("analytics.noPathData")}</p>
             ) : (
               <div className="space-y-3">
-                {topPaths.slice(0, 8).map((p, i) => {
-                  const max = topPaths[0]?.count ?? 1;
-                  const pct = Math.round((p.count / max) * 100);
+                {topPages.map(([path, views]) => {
+                  const pct = Math.round((views / (topPages[0]?.[1] ?? 1)) * 100);
                   return (
-                    <div key={p.path} className="space-y-1">
+                    <div key={path} className="space-y-1">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-mono text-muted-foreground truncate max-w-[200px]">
-                          {p.path || "/"}
-                        </span>
-                        <span className="text-white font-medium tabular-nums">{p.count.toLocaleString()}</span>
+                        <span className="font-mono text-muted-foreground truncate max-w-[200px]">{path || "/"}</span>
+                        <span className="text-white font-medium tabular-nums">{views.toLocaleString()}</span>
                       </div>
                       <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full"
-                          style={{ background: BAR_COLORS[i % BAR_COLORS.length] }}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${pct}%` }}
-                          transition={{ duration: 0.6, delay: i * 0.04 }}
-                        />
+                        <div className="h-full rounded-full" style={{ background: CHART_COLOR, width: `${pct}%` }} />
                       </div>
                     </div>
                   );
@@ -354,45 +248,37 @@ export default function SiteAnalytics() {
           </CardContent>
         </Card>
 
-        {/* Top referrers */}
+        {/* Views per page per day */}
         <Card className="border-white/5">
           <CardHeader>
-            <CardTitle className="text-white text-lg">{t("analytics.topReferrers")}</CardTitle>
-            <CardDescription>{t("analytics.topReferrersSubtitle")}</CardDescription>
+            <CardTitle className="text-white text-lg">{t("analytics.perPage")}</CardTitle>
+            <CardDescription>{t("analytics.perPageSubtitle")}</CardDescription>
           </CardHeader>
           <CardContent>
-            {(() => {
-              const list = (referrers?.referrers?.length ?? 0) > 0
-                ? referrers!.referrers.map(r => ({ referrer: r.referrer, count: r.hits }))
-                : topReferrers;
-              if (list.length === 0) return <p className="text-muted-foreground text-sm">{t("analytics.noReferrerData")}</p>;
-              return (
-                <div className="space-y-3">
-                  {list.slice(0, 12).map((r, i) => {
-                    const max = list[0]?.count ?? 1;
-                    const pct = Math.round((r.count / max) * 100);
-                    const label = r.referrer || "(direct)";
-                    return (
-                      <div key={r.referrer || i} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground truncate max-w-[200px]">{label}</span>
-                          <span className="text-white font-medium tabular-nums">{r.count.toLocaleString()}</span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                          <motion.div
-                            className="h-full rounded-full"
-                            style={{ background: BAR_COLORS[(i + 5) % BAR_COLORS.length] }}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${pct}%` }}
-                            transition={{ duration: 0.6, delay: i * 0.04 }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
+            {rows.length === 0 ? (
+              <p className="text-muted-foreground text-sm">{t("analytics.noData")}</p>
+            ) : (
+              <div className="max-h-80 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted-foreground text-xs">
+                      <th className="py-1 pr-3 font-medium">{t("analytics.colDay")}</th>
+                      <th className="py-1 pr-3 font-medium">{t("analytics.colPage")}</th>
+                      <th className="py-1 text-right font-medium">{t("analytics.colViews")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...rows].reverse().map((r) => (
+                      <tr key={`${r.day}|${r.path}`} className="border-t border-white/5">
+                        <td className="py-1 pr-3 text-muted-foreground whitespace-nowrap">{r.day}</td>
+                        <td className="py-1 pr-3 font-mono text-muted-foreground truncate max-w-[180px]">{r.path || "/"}</td>
+                        <td className="py-1 text-right text-white tabular-nums">{r.views.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

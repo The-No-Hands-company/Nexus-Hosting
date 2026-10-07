@@ -3,8 +3,7 @@
  *
  * Runs every 6 hours and enforces retention policies:
  *
- * analytics_buffer     — keep nothing (cleared after flush, handled separately)
- * site_analytics       — keep 90 days rolling (configurable via ANALYTICS_RETENTION_DAYS)
+ * site_page_views      — keep 90 days rolling (configurable via ANALYTICS_RETENTION_DAYS)
  * form_submissions     — keep 365 days unless FORM_RETENTION_DAYS is set
  * webhook_deliveries   — keep 30 days
  * sessions             — remove expired (already done elsewhere, this is a safety net)
@@ -15,9 +14,8 @@
  * All deletions are batched (max 5,000 rows per run) to avoid long-lock transactions.
  */
 
-import { db, sessionsTable, siteInvitationsTable, siteAnalyticsTable,
-         formSubmissionsTable, buildJobsTable, webhookDeliveriesTable } from "@workspace/db";
-import { lt, and, isNotNull, sql, lte } from "drizzle-orm";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import logger from "./logger";
 
 const BATCH = 5_000;
@@ -46,11 +44,11 @@ export async function runRetentionCleanup(): Promise<void> {
   const start = Date.now();
   let totalPruned = 0;
 
-  // ── Site analytics rows older than retention window ────────────────────────
+  // ── Page-view counters older than retention window ─────────────────────────
   totalPruned += await deleteBatch(
-    "site_analytics",
-    `hour < '${daysAgo(analyticsRetain).toISOString()}'`,
-    `analytics older than ${analyticsRetain}d`
+    "site_page_views",
+    `day < '${daysAgo(analyticsRetain).toISOString().slice(0, 10)}'`,
+    `page views older than ${analyticsRetain}d`
   );
 
   // ── Form submissions beyond retention ─────────────────────────────────────

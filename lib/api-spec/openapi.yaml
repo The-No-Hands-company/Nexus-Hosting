@@ -950,8 +950,8 @@ paths:
           in: query
           schema:
             type: string
-            enum: ["24h", "7d", "30d"]
-            default: "24h"
+            enum: ["24h", "7d", "30d", "90d"]
+            default: "7d"
       responses:
         "200":
           description: Analytics data
@@ -1961,58 +1961,36 @@ components:
                       type: string
 
     SiteAnalyticsResponse:
+      description: Page views per page per UTC day. Nothing about visitors is collected.
       type: object
+      required: [days]
       properties:
-        period:
-          type: string
-        totals:
-          type: object
-          properties:
-            hits:
-              type: integer
-            bytesServed:
-              type: integer
-            uniqueIps:
-              type: integer
-        hourly:
+        days:
           type: array
           items:
             type: object
-        topReferrers:
-          type: array
-          items:
-            type: object
+            required: [day, path, views]
             properties:
-              referrer:
+              day:
                 type: string
-              count:
-                type: integer
-        topPaths:
-          type: array
-          items:
-            type: object
-            properties:
+                format: date
               path:
                 type: string
-              count:
+              views:
                 type: integer
 
     AdminAnalyticsResponse:
       type: object
       properties:
-        last24h:
+        today:
           type: object
           properties:
-            hits:
-              type: integer
-            bytesServed:
+            views:
               type: integer
         last7d:
           type: object
           properties:
-            hits:
-              type: integer
-            bytesServed:
+            views:
               type: integer
         topSites:
           type: array
@@ -2026,7 +2004,7 @@ components:
           $ref: "#/components/schemas/Node"
         summary:
           type: object
-        analytics24h:
+        pageViews:
           type: object
         recentEvents:
           type: array
@@ -2390,7 +2368,6 @@ components:
                         target_type: {type: string, nullable: true}
                         target_id: {type: string, nullable: true}
                         metadata: {type: object, nullable: true}
-                        ip_address: {type: string, nullable: true}
                         created_at: {type: string, format: date-time}
                   meta:
                     type: object
@@ -2735,18 +2712,6 @@ components:
         '200':
           description: CSV file
           content: {text/csv: {schema: {type: string}}}
-
-  /sites/{id}/analytics/stream:
-    get:
-      summary: Real-time analytics SSE stream
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200':
-          description: Server-Sent Events stream of page hits
-          content: {'text/event-stream': {schema: {type: string}}}
 
   /admin/site-health:
     get:
@@ -3223,17 +3188,6 @@ components:
 
   # ── Analytics extras ─────────────────────────────────────────────────────────
 
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
   /stats/hourly:
     get:
       summary: Network-wide hourly activity (last 24h, for dashboard chart)
@@ -3609,17 +3563,6 @@ components:
       responses:
         '204': {description: Invitation revoked}
 
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true,  schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
   /stats/hourly:
     get:
       summary: Network-wide hourly activity for dashboard chart
@@ -3924,52 +3867,6 @@ components:
 
   # ── IP bans ───────────────────────────────────────────────────────────────────
 
-  /api/admin/ip-bans:
-    get:
-      summary: List active IP bans (admin only)
-      tags: [Admin]
-      security: [{cookieAuth: []}]
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: {type: array, items: {$ref: '#/components/schemas/IpBan'}}
-    post:
-      summary: Create an IP ban (admin only)
-      tags: [Admin]
-      security: [{cookieAuth: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [ipAddress]
-              properties:
-                ipAddress: {type: string, description: IPv4 address}
-                cidrRange: {type: string, description: CIDR range e.g. 1.2.3.0/24}
-                reason:    {type: string, maxLength: 500}
-                scope:     {type: string, enum: [api, sites, all], default: all}
-                expiresAt: {type: string, format: date-time, description: Null for permanent ban}
-      responses:
-        '201': {description: Ban created}
-
-  /api/admin/ip-bans/{id}:
-    delete:
-      summary: Remove an IP ban (admin only)
-      tags: [Admin]
-      security: [{cookieAuth: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Ban removed}
-        '404': {description: Ban not found}
-
-  # ── Node trust ────────────────────────────────────────────────────────────────
-
   /api/admin/node-trust:
     get:
       summary: List federation node trust scores (admin only)
@@ -4002,18 +3899,6 @@ components:
       reviewNotes:   {type: string}
       actionTaken:   {type: integer}
       createdAt:     {type: string, format: date-time}
-
-  IpBan:
-    type: object
-    properties:
-      id:        {type: integer}
-      ipAddress: {type: string}
-      cidrRange: {type: string, nullable: true}
-      reason:    {type: string, nullable: true}
-      scope:     {type: string, enum: [api, sites, all]}
-      bannedBy:  {type: string, nullable: true}
-      expiresAt: {type: string, format: date-time, nullable: true}
-      createdAt: {type: string, format: date-time}
 
   NodeTrust:
     type: object
@@ -4118,60 +4003,6 @@ components:
         '200': {description: Site suspended}
 
   # ── IP bans ───────────────────────────────────────────────────────────────────
-
-  /api/admin/ip-bans:
-    get:
-      summary: List active IP bans (admin only)
-      tags: [Admin]
-      security: [{cookieAuth: []}]
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data: {type: array, items: {$ref: '#/components/schemas/IpBan'}}
-    post:
-      summary: Create an IP ban (admin only)
-      tags: [Admin]
-      security: [{cookieAuth: []}]
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [ipAddress]
-              properties:
-                ipAddress: {type: string}
-                cidrRange: {type: string}
-                reason: {type: string}
-                scope: {type: string, enum: [api, sites, all]}
-                expiresAt: {type: string, format: date-time}
-      responses:
-        '201': {description: Ban created}
-
-  /api/admin/ip-bans/{id}:
-    delete:
-      summary: Remove an IP ban (admin only)
-      tags: [Admin]
-      security: [{cookieAuth: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Removed}
-
-  AbuseReportBody:
-    type: object
-    required: [siteDomain, reason]
-    properties:
-      siteDomain: {type: string}
-      reason: {type: string, enum: [spam, phishing, malware, csam, copyright, harassment, illegal_content, other]}
-      description: {type: string, maxLength: 2000}
-      evidenceUrl: {type: string, format: uri}
-      reporterEmail: {type: string, format: email}
-
-  # ── Cloud integration ───────────────────────────────────────────────────────
 
   /cloud/.well-known/nexus-cloud:
     get:
@@ -4841,58 +4672,36 @@ components:
                       type: string
 
     SiteAnalyticsResponse:
+      description: Page views per page per UTC day. Nothing about visitors is collected.
       type: object
+      required: [days]
       properties:
-        period:
-          type: string
-        totals:
-          type: object
-          properties:
-            hits:
-              type: integer
-            bytesServed:
-              type: integer
-            uniqueIps:
-              type: integer
-        hourly:
+        days:
           type: array
           items:
             type: object
-        topReferrers:
-          type: array
-          items:
-            type: object
+            required: [day, path, views]
             properties:
-              referrer:
+              day:
                 type: string
-              count:
-                type: integer
-        topPaths:
-          type: array
-          items:
-            type: object
-            properties:
+                format: date
               path:
                 type: string
-              count:
+              views:
                 type: integer
 
     AdminAnalyticsResponse:
       type: object
       properties:
-        last24h:
+        today:
           type: object
           properties:
-            hits:
-              type: integer
-            bytesServed:
+            views:
               type: integer
         last7d:
           type: object
           properties:
-            hits:
-              type: integer
-            bytesServed:
+            views:
               type: integer
         topSites:
           type: array
@@ -4906,7 +4715,7 @@ components:
           $ref: "#/components/schemas/Node"
         summary:
           type: object
-        analytics24h:
+        pageViews:
           type: object
         recentEvents:
           type: array
@@ -5270,7 +5079,6 @@ components:
                         target_type: {type: string, nullable: true}
                         target_id: {type: string, nullable: true}
                         metadata: {type: object, nullable: true}
-                        ip_address: {type: string, nullable: true}
                         created_at: {type: string, format: date-time}
                   meta:
                     type: object
@@ -5615,18 +5423,6 @@ components:
         '200':
           description: CSV file
           content: {text/csv: {schema: {type: string}}}
-
-  /sites/{id}/analytics/stream:
-    get:
-      summary: Real-time analytics SSE stream
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200':
-          description: Server-Sent Events stream of page hits
-          content: {'text/event-stream': {schema: {type: string}}}
 
   /admin/site-health:
     get:
@@ -6099,17 +5895,6 @@ components:
       responses:
         '204': {description: Invitation revoked}
 
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
   /stats/hourly:
     get:
       summary: Network-wide hourly activity (last 24h, for dashboard chart)
@@ -6516,17 +6301,6 @@ components:
         '204': {description: Invitation revoked}
 
   # ── Analytics extras ─────────────────────────────────────────────────────────
-
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
 
   /stats/hourly:
     get:
@@ -6959,17 +6733,6 @@ components:
         - {name: inviteId, in: path, required: true, schema: {type: integer}}
       responses:
         '204': {description: Invitation revoked}
-
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
 
   /stats/hourly:
     get:
@@ -7403,17 +7166,6 @@ components:
 
   # ── Analytics extras ─────────────────────────────────────────────────────────
 
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
   /stats/hourly:
     get:
       summary: Network-wide hourly activity (last 24h, for dashboard chart)
@@ -7845,17 +7597,6 @@ components:
         - {name: inviteId, in: path, required: true, schema: {type: integer}}
       responses:
         '204': {description: Invitation revoked}
-
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
 
   /stats/hourly:
     get:
@@ -8285,17 +8026,6 @@ components:
 
   # ── Analytics extras ─────────────────────────────────────────────────────────
 
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
   /stats/hourly:
     get:
       summary: Network-wide hourly activity (last 24h, for dashboard chart)
@@ -8728,16 +8458,429 @@ components:
       responses:
         '204': {description: Invitation revoked}
 
-  /sites/{id}/analytics/referrers:
+  /stats/hourly:
     get:
-      summary: Top referrers for a site over a time period
+      summary: Network-wide hourly activity (last 24h, for dashboard chart)
       tags: [Analytics]
+      responses:
+        '200': {description: Array of hourly buckets with deployment and event counts}
+
+  /nodes/{id}/update-capacity:
+    post:
+      summary: Update a node's reported storage and bandwidth capacity (node-to-node)
+      tags: [Nodes]
+      security: [{bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Capacity updated}
+
+  /sites/{id}/env/{key}:
+    delete:
+      summary: Delete a single env var by key
+      tags: [Sites]
       security: [{sessionCookie: []}, {bearerToken: []}]
       parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
+        - {name: id,  in: path, required: true, schema: {type: integer}}
+        - {name: key, in: path, required: true, schema: {type: string}}
       responses:
-        '200': {description: Referrer list with hit counts}
+        '204': {description: Env var deleted}
+
+  /sites/{id}/transfer/accept:
+    post:
+      summary: Accept a site transfer (new owner only)
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toEmail]
+              properties:
+                toEmail: {type: string, format: email}
+      responses:
+        '200': {description: Transfer accepted — caller is now the site owner}
+
+  /webhooks/config:
+    get:
+      summary: Node-level webhook configuration (operator endpoint URLs)
+      tags: [Webhooks]
+      security: [{sessionCookie: []}]
+      responses:
+        '200': {description: Webhook configuration and recent delivery stats}
+
+  /webhooks/test:
+    post:
+      summary: Send a test webhook delivery to all configured endpoints
+      tags: [Webhooks]
+      security: [{sessionCookie: []}]
+      responses:
+        '200': {description: Test delivery sent}
+
+  # ── TLS / ACME ───────────────────────────────────────────────────────────────
+
+  /.well-known/acme-challenge/{token}:
+    get:
+      summary: Serve HTTP-01 ACME challenge response (Let's Encrypt)
+      tags: [TLS]
+      parameters:
+        - {name: token, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: keyAuthorization string for the challenge token}
+        '404': {description: No active challenge for this token}
+
+  # ── Storage (internal) ───────────────────────────────────────────────────────
+
+  /storage/public-objects/{filePath*}:
+    get:
+      summary: Serve a public object by path (internal — prefer site-domain routing)
+      tags: [Storage]
+      parameters:
+        - {name: filePath, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content}
+        '404': {description: File not found}
+
+  /storage/objects/{path*}:
+    get:
+      summary: Serve a private object by path (requires authentication)
+      tags: [Storage]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: path, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content}
+
+  /sites/serve/{domain}/{filePath*}:
+    get:
+      summary: Serve a site file by domain and path (used for previews)
+      tags: [Deploy]
+      parameters:
+        - {name: domain,   in: path, required: true, schema: {type: string}}
+        - {name: filePath, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content with correct Content-Type}
+        '404': {description: File not found}
+
+
+  /tokens/{id}:
+    delete:
+      summary: Revoke an API token
+      tags: [Auth]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Token revoked}
+        '404': {description: Token not found}
+
+  /auth/2fa/status:
+    get:
+      summary: Check whether 2FA is enabled for the current user
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      responses:
+        '200':
+          description: 2FA status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:   {type: boolean}
+                  enabledAt: {type: string, format: date-time, nullable: true}
+
+  /auth/2fa/disable:
+    post:
+      summary: Disable 2FA (requires current TOTP code or backup code)
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 10}
+      responses:
+        '200': {description: 2FA disabled}
+
+  /auth/2fa/backup:
+    post:
+      summary: Regenerate backup codes (invalidates existing codes)
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 6, description: Current TOTP code to confirm identity}
+      responses:
+        '200':
+          description: New backup codes (only shown once)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backupCodes: {type: array, items: {type: string}}
+
+  /auth/2fa/complete:
+    post:
+      summary: Complete a 2FA login challenge (upgrades pending session to authenticated)
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 10, description: TOTP code or backup code}
+      responses:
+        '200':
+          description: Authentication complete — session upgraded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated: {type: boolean}
+                  method: {type: string, enum: [totp, backup]}
+        '401': {description: No pending 2FA session}
+        '400': {description: Invalid code or account locked}
+
+  /nlpl/runtime-info:
+    get:
+      summary: NLPL interpreter availability, version, and port range
+      tags: [NLPL]
+      responses:
+        '200':
+          description: Runtime info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:         {type: boolean}
+                  interpreterPath:   {type: string}
+                  nlplVersion:       {type: string, nullable: true}
+                  pythonVersion:     {type: string, nullable: true}
+                  portRange:         {type: object, properties: {start: {type: integer}, end: {type: integer}}}
+                  installInstructions: {type: string, nullable: true}
+
+  /sites/{id}/nlpl/start:
+    post:
+      summary: Start (or restart) the dynamic process for a site
+      tags: [NLPL]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entryFile: {type: string, default: server.nlpl, description: Entry file relative to site root}
+      responses:
+        '200':
+          description: Process started — returns allocated port
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:    {type: string, enum: [running]}
+                  port:      {type: integer}
+                  runtime:   {type: string, enum: [nlpl, node, python]}
+                  entryFile: {type: string}
+        '400': {description: No active deployment or entry file not found}
+        '404': {description: Site not found}
+
+  /sites/{id}/nlpl/stop:
+    post:
+      summary: Stop the dynamic process for a site
+      tags: [NLPL]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Process stopped}
+
+  /sites/{id}/nlpl/status:
+    get:
+      summary: Process status, port, PID, and restart count
+      tags: [NLPL]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Process status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:       {type: string, enum: [running, starting, crashed, stopped]}
+                  port:         {type: integer, nullable: true}
+                  pid:          {type: integer, nullable: true}
+                  runtime:      {type: string, nullable: true}
+                  restartCount: {type: integer}
+                  startedAt:    {type: string, format: date-time, nullable: true}
+                  lastCrashAt:  {type: string, format: date-time, nullable: true}
+
+  /sites/{id}/nlpl/logs:
+    get:
+      summary: Recent process stdout/stderr (ring buffer tail)
+      tags: [NLPL]
+      parameters:
+        - {name: id,   in: path,  required: true,  schema: {type: integer}}
+        - {name: tail, in: query, required: false, schema: {type: integer, default: 100, maximum: 500}}
+      responses:
+        '200':
+          description: Log lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lines: {type: array, items: {type: string}}
+                  count: {type: integer}
+
+  # ── Admin: processes ─────────────────────────────────────────────────────────
+
+  /admin/processes:
+    get:
+      summary: All running dynamic site processes (admin only)
+      tags: [Admin]
+      security: [{sessionCookie: []}]
+      responses:
+        '200':
+          description: Process list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processes: {type: array}
+                  total: {type: integer}
+
+  # ── Builds ───────────────────────────────────────────────────────────────────
+
+  /sites/{id}/builds/{buildId}:
+    get:
+      summary: Get build details and log
+      tags: [Builds]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,      in: path, required: true, schema: {type: integer}}
+        - {name: buildId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Build details including full log output}
+    delete:
+      summary: Cancel a queued build
+      tags: [Builds]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,      in: path, required: true, schema: {type: integer}}
+        - {name: buildId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Build cancelled}
+        '400': {description: Build cannot be cancelled (already running or finished)}
+
+  # ── Redirects and custom headers ─────────────────────────────────────────────
+
+  /sites/{id}/redirects/{ruleId}:
+    delete:
+      summary: Delete a redirect rule
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,     in: path, required: true, schema: {type: integer}}
+        - {name: ruleId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Rule deleted}
+
+  /sites/{id}/headers/{headerId}:
+    delete:
+      summary: Delete a custom response header
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: headerId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Header deleted}
+
+  # ── Forms ────────────────────────────────────────────────────────────────────
+
+  /sites/{id}/forms/{formName}/export:
+    get:
+      summary: Export form submissions as CSV
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: formName, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: CSV download
+          content:
+            text/csv:
+              schema: {type: string}
+
+  /sites/{id}/forms/{submissionId}:
+    patch:
+      summary: Mark a form submission as read/unread or add a note
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,           in: path, required: true, schema: {type: integer}}
+        - {name: submissionId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Submission updated}
+    delete:
+      summary: Delete a form submission
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,           in: path, required: true, schema: {type: integer}}
+        - {name: submissionId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Submission deleted}
+
+  /invitations/{token}:
+    get:
+      summary: Look up an invitation by token (for accept page)
+      tags: [Access]
+      parameters:
+        - {name: token, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Invitation details including site name and inviter}
+        '404': {description: Invitation not found or expired}
+
+  /sites/{id}/invitations/{inviteId}:
+    delete:
+      summary: Revoke a pending invitation
+      tags: [Access]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: inviteId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Invitation revoked}
 
   /stats/hourly:
     get:
@@ -9163,16 +9306,429 @@ components:
       responses:
         '204': {description: Invitation revoked}
 
-  /sites/{id}/analytics/referrers:
+  /stats/hourly:
     get:
-      summary: Top referrers for a site over a time period
+      summary: Network-wide hourly activity (last 24h, for dashboard chart)
       tags: [Analytics]
+      responses:
+        '200': {description: Array of hourly buckets with deployment and event counts}
+
+  /nodes/{id}/update-capacity:
+    post:
+      summary: Update a node's reported storage and bandwidth capacity (node-to-node)
+      tags: [Nodes]
+      security: [{bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Capacity updated}
+
+  /sites/{id}/env/{key}:
+    delete:
+      summary: Delete a single env var by key
+      tags: [Sites]
       security: [{sessionCookie: []}, {bearerToken: []}]
       parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
+        - {name: id,  in: path, required: true, schema: {type: integer}}
+        - {name: key, in: path, required: true, schema: {type: string}}
       responses:
-        '200': {description: Referrer list with hit counts}
+        '204': {description: Env var deleted}
+
+  /sites/{id}/transfer/accept:
+    post:
+      summary: Accept a site transfer (new owner only)
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toEmail]
+              properties:
+                toEmail: {type: string, format: email}
+      responses:
+        '200': {description: Transfer accepted — caller is now the site owner}
+
+  /webhooks/config:
+    get:
+      summary: Node-level webhook configuration (operator endpoint URLs)
+      tags: [Webhooks]
+      security: [{sessionCookie: []}]
+      responses:
+        '200': {description: Webhook configuration and recent delivery stats}
+
+  /webhooks/test:
+    post:
+      summary: Send a test webhook delivery to all configured endpoints
+      tags: [Webhooks]
+      security: [{sessionCookie: []}]
+      responses:
+        '200': {description: Test delivery sent}
+
+  # ── TLS / ACME ───────────────────────────────────────────────────────────────
+
+  /.well-known/acme-challenge/{token}:
+    get:
+      summary: Serve HTTP-01 ACME challenge response (Let's Encrypt)
+      tags: [TLS]
+      parameters:
+        - {name: token, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: keyAuthorization string for the challenge token}
+        '404': {description: No active challenge for this token}
+
+  # ── Storage (internal) ───────────────────────────────────────────────────────
+
+  /storage/public-objects/{filePath*}:
+    get:
+      summary: Serve a public object by path (internal — prefer site-domain routing)
+      tags: [Storage]
+      parameters:
+        - {name: filePath, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content}
+        '404': {description: File not found}
+
+  /storage/objects/{path*}:
+    get:
+      summary: Serve a private object by path (requires authentication)
+      tags: [Storage]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: path, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content}
+
+  /sites/serve/{domain}/{filePath*}:
+    get:
+      summary: Serve a site file by domain and path (used for previews)
+      tags: [Deploy]
+      parameters:
+        - {name: domain,   in: path, required: true, schema: {type: string}}
+        - {name: filePath, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content with correct Content-Type}
+        '404': {description: File not found}
+
+
+  /tokens/{id}:
+    delete:
+      summary: Revoke an API token
+      tags: [Auth]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Token revoked}
+        '404': {description: Token not found}
+
+  /auth/2fa/status:
+    get:
+      summary: Check whether 2FA is enabled for the current user
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      responses:
+        '200':
+          description: 2FA status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:   {type: boolean}
+                  enabledAt: {type: string, format: date-time, nullable: true}
+
+  /auth/2fa/disable:
+    post:
+      summary: Disable 2FA (requires current TOTP code or backup code)
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 10}
+      responses:
+        '200': {description: 2FA disabled}
+
+  /auth/2fa/backup:
+    post:
+      summary: Regenerate backup codes (invalidates existing codes)
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 6, description: Current TOTP code to confirm identity}
+      responses:
+        '200':
+          description: New backup codes (only shown once)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backupCodes: {type: array, items: {type: string}}
+
+  /auth/2fa/complete:
+    post:
+      summary: Complete a 2FA login challenge (upgrades pending session to authenticated)
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 10, description: TOTP code or backup code}
+      responses:
+        '200':
+          description: Authentication complete — session upgraded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated: {type: boolean}
+                  method: {type: string, enum: [totp, backup]}
+        '401': {description: No pending 2FA session}
+        '400': {description: Invalid code or account locked}
+
+  /nlpl/runtime-info:
+    get:
+      summary: NLPL interpreter availability, version, and port range
+      tags: [NLPL]
+      responses:
+        '200':
+          description: Runtime info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:         {type: boolean}
+                  interpreterPath:   {type: string}
+                  nlplVersion:       {type: string, nullable: true}
+                  pythonVersion:     {type: string, nullable: true}
+                  portRange:         {type: object, properties: {start: {type: integer}, end: {type: integer}}}
+                  installInstructions: {type: string, nullable: true}
+
+  /sites/{id}/nlpl/start:
+    post:
+      summary: Start (or restart) the dynamic process for a site
+      tags: [NLPL]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entryFile: {type: string, default: server.nlpl, description: Entry file relative to site root}
+      responses:
+        '200':
+          description: Process started — returns allocated port
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:    {type: string, enum: [running]}
+                  port:      {type: integer}
+                  runtime:   {type: string, enum: [nlpl, node, python]}
+                  entryFile: {type: string}
+        '400': {description: No active deployment or entry file not found}
+        '404': {description: Site not found}
+
+  /sites/{id}/nlpl/stop:
+    post:
+      summary: Stop the dynamic process for a site
+      tags: [NLPL]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Process stopped}
+
+  /sites/{id}/nlpl/status:
+    get:
+      summary: Process status, port, PID, and restart count
+      tags: [NLPL]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Process status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:       {type: string, enum: [running, starting, crashed, stopped]}
+                  port:         {type: integer, nullable: true}
+                  pid:          {type: integer, nullable: true}
+                  runtime:      {type: string, nullable: true}
+                  restartCount: {type: integer}
+                  startedAt:    {type: string, format: date-time, nullable: true}
+                  lastCrashAt:  {type: string, format: date-time, nullable: true}
+
+  /sites/{id}/nlpl/logs:
+    get:
+      summary: Recent process stdout/stderr (ring buffer tail)
+      tags: [NLPL]
+      parameters:
+        - {name: id,   in: path,  required: true,  schema: {type: integer}}
+        - {name: tail, in: query, required: false, schema: {type: integer, default: 100, maximum: 500}}
+      responses:
+        '200':
+          description: Log lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lines: {type: array, items: {type: string}}
+                  count: {type: integer}
+
+  # ── Admin: processes ─────────────────────────────────────────────────────────
+
+  /admin/processes:
+    get:
+      summary: All running dynamic site processes (admin only)
+      tags: [Admin]
+      security: [{sessionCookie: []}]
+      responses:
+        '200':
+          description: Process list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processes: {type: array}
+                  total: {type: integer}
+
+  # ── Builds ───────────────────────────────────────────────────────────────────
+
+  /sites/{id}/builds/{buildId}:
+    get:
+      summary: Get build details and log
+      tags: [Builds]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,      in: path, required: true, schema: {type: integer}}
+        - {name: buildId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Build details including full log output}
+    delete:
+      summary: Cancel a queued build
+      tags: [Builds]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,      in: path, required: true, schema: {type: integer}}
+        - {name: buildId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Build cancelled}
+        '400': {description: Build cannot be cancelled (already running or finished)}
+
+  # ── Redirects and custom headers ─────────────────────────────────────────────
+
+  /sites/{id}/redirects/{ruleId}:
+    delete:
+      summary: Delete a redirect rule
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,     in: path, required: true, schema: {type: integer}}
+        - {name: ruleId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Rule deleted}
+
+  /sites/{id}/headers/{headerId}:
+    delete:
+      summary: Delete a custom response header
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: headerId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Header deleted}
+
+  # ── Forms ────────────────────────────────────────────────────────────────────
+
+  /sites/{id}/forms/{formName}/export:
+    get:
+      summary: Export form submissions as CSV
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: formName, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: CSV download
+          content:
+            text/csv:
+              schema: {type: string}
+
+  /sites/{id}/forms/{submissionId}:
+    patch:
+      summary: Mark a form submission as read/unread or add a note
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,           in: path, required: true, schema: {type: integer}}
+        - {name: submissionId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Submission updated}
+    delete:
+      summary: Delete a form submission
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,           in: path, required: true, schema: {type: integer}}
+        - {name: submissionId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Submission deleted}
+
+  /invitations/{token}:
+    get:
+      summary: Look up an invitation by token (for accept page)
+      tags: [Access]
+      parameters:
+        - {name: token, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Invitation details including site name and inviter}
+        '404': {description: Invitation not found or expired}
+
+  /sites/{id}/invitations/{inviteId}:
+    delete:
+      summary: Revoke a pending invitation
+      tags: [Access]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: inviteId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Invitation revoked}
 
   /stats/hourly:
     get:
@@ -9598,16 +10154,429 @@ components:
       responses:
         '204': {description: Invitation revoked}
 
-  /sites/{id}/analytics/referrers:
+  /stats/hourly:
     get:
-      summary: Top referrers for a site over a time period
+      summary: Network-wide hourly activity (last 24h, for dashboard chart)
       tags: [Analytics]
+      responses:
+        '200': {description: Array of hourly buckets with deployment and event counts}
+
+  /nodes/{id}/update-capacity:
+    post:
+      summary: Update a node's reported storage and bandwidth capacity (node-to-node)
+      tags: [Nodes]
+      security: [{bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Capacity updated}
+
+  /sites/{id}/env/{key}:
+    delete:
+      summary: Delete a single env var by key
+      tags: [Sites]
       security: [{sessionCookie: []}, {bearerToken: []}]
       parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
+        - {name: id,  in: path, required: true, schema: {type: integer}}
+        - {name: key, in: path, required: true, schema: {type: string}}
       responses:
-        '200': {description: Referrer list with hit counts}
+        '204': {description: Env var deleted}
+
+  /sites/{id}/transfer/accept:
+    post:
+      summary: Accept a site transfer (new owner only)
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toEmail]
+              properties:
+                toEmail: {type: string, format: email}
+      responses:
+        '200': {description: Transfer accepted — caller is now the site owner}
+
+  /webhooks/config:
+    get:
+      summary: Node-level webhook configuration (operator endpoint URLs)
+      tags: [Webhooks]
+      security: [{sessionCookie: []}]
+      responses:
+        '200': {description: Webhook configuration and recent delivery stats}
+
+  /webhooks/test:
+    post:
+      summary: Send a test webhook delivery to all configured endpoints
+      tags: [Webhooks]
+      security: [{sessionCookie: []}]
+      responses:
+        '200': {description: Test delivery sent}
+
+  # ── TLS / ACME ───────────────────────────────────────────────────────────────
+
+  /.well-known/acme-challenge/{token}:
+    get:
+      summary: Serve HTTP-01 ACME challenge response (Let's Encrypt)
+      tags: [TLS]
+      parameters:
+        - {name: token, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: keyAuthorization string for the challenge token}
+        '404': {description: No active challenge for this token}
+
+  # ── Storage (internal) ───────────────────────────────────────────────────────
+
+  /storage/public-objects/{filePath*}:
+    get:
+      summary: Serve a public object by path (internal — prefer site-domain routing)
+      tags: [Storage]
+      parameters:
+        - {name: filePath, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content}
+        '404': {description: File not found}
+
+  /storage/objects/{path*}:
+    get:
+      summary: Serve a private object by path (requires authentication)
+      tags: [Storage]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: path, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content}
+
+  /sites/serve/{domain}/{filePath*}:
+    get:
+      summary: Serve a site file by domain and path (used for previews)
+      tags: [Deploy]
+      parameters:
+        - {name: domain,   in: path, required: true, schema: {type: string}}
+        - {name: filePath, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content with correct Content-Type}
+        '404': {description: File not found}
+
+
+  /tokens/{id}:
+    delete:
+      summary: Revoke an API token
+      tags: [Auth]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Token revoked}
+        '404': {description: Token not found}
+
+  /auth/2fa/status:
+    get:
+      summary: Check whether 2FA is enabled for the current user
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      responses:
+        '200':
+          description: 2FA status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:   {type: boolean}
+                  enabledAt: {type: string, format: date-time, nullable: true}
+
+  /auth/2fa/disable:
+    post:
+      summary: Disable 2FA (requires current TOTP code or backup code)
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 10}
+      responses:
+        '200': {description: 2FA disabled}
+
+  /auth/2fa/backup:
+    post:
+      summary: Regenerate backup codes (invalidates existing codes)
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 6, description: Current TOTP code to confirm identity}
+      responses:
+        '200':
+          description: New backup codes (only shown once)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backupCodes: {type: array, items: {type: string}}
+
+  /auth/2fa/complete:
+    post:
+      summary: Complete a 2FA login challenge (upgrades pending session to authenticated)
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 10, description: TOTP code or backup code}
+      responses:
+        '200':
+          description: Authentication complete — session upgraded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated: {type: boolean}
+                  method: {type: string, enum: [totp, backup]}
+        '401': {description: No pending 2FA session}
+        '400': {description: Invalid code or account locked}
+
+  /nlpl/runtime-info:
+    get:
+      summary: NLPL interpreter availability, version, and port range
+      tags: [NLPL]
+      responses:
+        '200':
+          description: Runtime info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:         {type: boolean}
+                  interpreterPath:   {type: string}
+                  nlplVersion:       {type: string, nullable: true}
+                  pythonVersion:     {type: string, nullable: true}
+                  portRange:         {type: object, properties: {start: {type: integer}, end: {type: integer}}}
+                  installInstructions: {type: string, nullable: true}
+
+  /sites/{id}/nlpl/start:
+    post:
+      summary: Start (or restart) the dynamic process for a site
+      tags: [NLPL]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entryFile: {type: string, default: server.nlpl, description: Entry file relative to site root}
+      responses:
+        '200':
+          description: Process started — returns allocated port
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:    {type: string, enum: [running]}
+                  port:      {type: integer}
+                  runtime:   {type: string, enum: [nlpl, node, python]}
+                  entryFile: {type: string}
+        '400': {description: No active deployment or entry file not found}
+        '404': {description: Site not found}
+
+  /sites/{id}/nlpl/stop:
+    post:
+      summary: Stop the dynamic process for a site
+      tags: [NLPL]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Process stopped}
+
+  /sites/{id}/nlpl/status:
+    get:
+      summary: Process status, port, PID, and restart count
+      tags: [NLPL]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Process status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:       {type: string, enum: [running, starting, crashed, stopped]}
+                  port:         {type: integer, nullable: true}
+                  pid:          {type: integer, nullable: true}
+                  runtime:      {type: string, nullable: true}
+                  restartCount: {type: integer}
+                  startedAt:    {type: string, format: date-time, nullable: true}
+                  lastCrashAt:  {type: string, format: date-time, nullable: true}
+
+  /sites/{id}/nlpl/logs:
+    get:
+      summary: Recent process stdout/stderr (ring buffer tail)
+      tags: [NLPL]
+      parameters:
+        - {name: id,   in: path,  required: true,  schema: {type: integer}}
+        - {name: tail, in: query, required: false, schema: {type: integer, default: 100, maximum: 500}}
+      responses:
+        '200':
+          description: Log lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lines: {type: array, items: {type: string}}
+                  count: {type: integer}
+
+  # ── Admin: processes ─────────────────────────────────────────────────────────
+
+  /admin/processes:
+    get:
+      summary: All running dynamic site processes (admin only)
+      tags: [Admin]
+      security: [{sessionCookie: []}]
+      responses:
+        '200':
+          description: Process list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processes: {type: array}
+                  total: {type: integer}
+
+  # ── Builds ───────────────────────────────────────────────────────────────────
+
+  /sites/{id}/builds/{buildId}:
+    get:
+      summary: Get build details and log
+      tags: [Builds]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,      in: path, required: true, schema: {type: integer}}
+        - {name: buildId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Build details including full log output}
+    delete:
+      summary: Cancel a queued build
+      tags: [Builds]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,      in: path, required: true, schema: {type: integer}}
+        - {name: buildId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Build cancelled}
+        '400': {description: Build cannot be cancelled (already running or finished)}
+
+  # ── Redirects and custom headers ─────────────────────────────────────────────
+
+  /sites/{id}/redirects/{ruleId}:
+    delete:
+      summary: Delete a redirect rule
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,     in: path, required: true, schema: {type: integer}}
+        - {name: ruleId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Rule deleted}
+
+  /sites/{id}/headers/{headerId}:
+    delete:
+      summary: Delete a custom response header
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: headerId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Header deleted}
+
+  # ── Forms ────────────────────────────────────────────────────────────────────
+
+  /sites/{id}/forms/{formName}/export:
+    get:
+      summary: Export form submissions as CSV
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: formName, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: CSV download
+          content:
+            text/csv:
+              schema: {type: string}
+
+  /sites/{id}/forms/{submissionId}:
+    patch:
+      summary: Mark a form submission as read/unread or add a note
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,           in: path, required: true, schema: {type: integer}}
+        - {name: submissionId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Submission updated}
+    delete:
+      summary: Delete a form submission
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,           in: path, required: true, schema: {type: integer}}
+        - {name: submissionId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Submission deleted}
+
+  /invitations/{token}:
+    get:
+      summary: Look up an invitation by token (for accept page)
+      tags: [Access]
+      parameters:
+        - {name: token, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Invitation details including site name and inviter}
+        '404': {description: Invitation not found or expired}
+
+  /sites/{id}/invitations/{inviteId}:
+    delete:
+      summary: Revoke a pending invitation
+      tags: [Access]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: inviteId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Invitation revoked}
 
   /stats/hourly:
     get:
@@ -10033,16 +11002,429 @@ components:
       responses:
         '204': {description: Invitation revoked}
 
-  /sites/{id}/analytics/referrers:
+  /stats/hourly:
     get:
-      summary: Top referrers for a site over a time period
+      summary: Network-wide hourly activity (last 24h, for dashboard chart)
       tags: [Analytics]
+      responses:
+        '200': {description: Array of hourly buckets with deployment and event counts}
+
+  /nodes/{id}/update-capacity:
+    post:
+      summary: Update a node's reported storage and bandwidth capacity (node-to-node)
+      tags: [Nodes]
+      security: [{bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Capacity updated}
+
+  /sites/{id}/env/{key}:
+    delete:
+      summary: Delete a single env var by key
+      tags: [Sites]
       security: [{sessionCookie: []}, {bearerToken: []}]
       parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
+        - {name: id,  in: path, required: true, schema: {type: integer}}
+        - {name: key, in: path, required: true, schema: {type: string}}
       responses:
-        '200': {description: Referrer list with hit counts}
+        '204': {description: Env var deleted}
+
+  /sites/{id}/transfer/accept:
+    post:
+      summary: Accept a site transfer (new owner only)
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toEmail]
+              properties:
+                toEmail: {type: string, format: email}
+      responses:
+        '200': {description: Transfer accepted — caller is now the site owner}
+
+  /webhooks/config:
+    get:
+      summary: Node-level webhook configuration (operator endpoint URLs)
+      tags: [Webhooks]
+      security: [{sessionCookie: []}]
+      responses:
+        '200': {description: Webhook configuration and recent delivery stats}
+
+  /webhooks/test:
+    post:
+      summary: Send a test webhook delivery to all configured endpoints
+      tags: [Webhooks]
+      security: [{sessionCookie: []}]
+      responses:
+        '200': {description: Test delivery sent}
+
+  # ── TLS / ACME ───────────────────────────────────────────────────────────────
+
+  /.well-known/acme-challenge/{token}:
+    get:
+      summary: Serve HTTP-01 ACME challenge response (Let's Encrypt)
+      tags: [TLS]
+      parameters:
+        - {name: token, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: keyAuthorization string for the challenge token}
+        '404': {description: No active challenge for this token}
+
+  # ── Storage (internal) ───────────────────────────────────────────────────────
+
+  /storage/public-objects/{filePath*}:
+    get:
+      summary: Serve a public object by path (internal — prefer site-domain routing)
+      tags: [Storage]
+      parameters:
+        - {name: filePath, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content}
+        '404': {description: File not found}
+
+  /storage/objects/{path*}:
+    get:
+      summary: Serve a private object by path (requires authentication)
+      tags: [Storage]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: path, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content}
+
+  /sites/serve/{domain}/{filePath*}:
+    get:
+      summary: Serve a site file by domain and path (used for previews)
+      tags: [Deploy]
+      parameters:
+        - {name: domain,   in: path, required: true, schema: {type: string}}
+        - {name: filePath, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File content with correct Content-Type}
+        '404': {description: File not found}
+
+
+  /tokens/{id}:
+    delete:
+      summary: Revoke an API token
+      tags: [Auth]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Token revoked}
+        '404': {description: Token not found}
+
+  /auth/2fa/status:
+    get:
+      summary: Check whether 2FA is enabled for the current user
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      responses:
+        '200':
+          description: 2FA status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:   {type: boolean}
+                  enabledAt: {type: string, format: date-time, nullable: true}
+
+  /auth/2fa/disable:
+    post:
+      summary: Disable 2FA (requires current TOTP code or backup code)
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 10}
+      responses:
+        '200': {description: 2FA disabled}
+
+  /auth/2fa/backup:
+    post:
+      summary: Regenerate backup codes (invalidates existing codes)
+      tags: [Auth]
+      security: [{sessionCookie: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 6, description: Current TOTP code to confirm identity}
+      responses:
+        '200':
+          description: New backup codes (only shown once)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backupCodes: {type: array, items: {type: string}}
+
+  /auth/2fa/complete:
+    post:
+      summary: Complete a 2FA login challenge (upgrades pending session to authenticated)
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 10, description: TOTP code or backup code}
+      responses:
+        '200':
+          description: Authentication complete — session upgraded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated: {type: boolean}
+                  method: {type: string, enum: [totp, backup]}
+        '401': {description: No pending 2FA session}
+        '400': {description: Invalid code or account locked}
+
+  /nlpl/runtime-info:
+    get:
+      summary: NLPL interpreter availability, version, and port range
+      tags: [NLPL]
+      responses:
+        '200':
+          description: Runtime info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:         {type: boolean}
+                  interpreterPath:   {type: string}
+                  nlplVersion:       {type: string, nullable: true}
+                  pythonVersion:     {type: string, nullable: true}
+                  portRange:         {type: object, properties: {start: {type: integer}, end: {type: integer}}}
+                  installInstructions: {type: string, nullable: true}
+
+  /sites/{id}/nlpl/start:
+    post:
+      summary: Start (or restart) the dynamic process for a site
+      tags: [NLPL]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entryFile: {type: string, default: server.nlpl, description: Entry file relative to site root}
+      responses:
+        '200':
+          description: Process started — returns allocated port
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:    {type: string, enum: [running]}
+                  port:      {type: integer}
+                  runtime:   {type: string, enum: [nlpl, node, python]}
+                  entryFile: {type: string}
+        '400': {description: No active deployment or entry file not found}
+        '404': {description: Site not found}
+
+  /sites/{id}/nlpl/stop:
+    post:
+      summary: Stop the dynamic process for a site
+      tags: [NLPL]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Process stopped}
+
+  /sites/{id}/nlpl/status:
+    get:
+      summary: Process status, port, PID, and restart count
+      tags: [NLPL]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Process status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:       {type: string, enum: [running, starting, crashed, stopped]}
+                  port:         {type: integer, nullable: true}
+                  pid:          {type: integer, nullable: true}
+                  runtime:      {type: string, nullable: true}
+                  restartCount: {type: integer}
+                  startedAt:    {type: string, format: date-time, nullable: true}
+                  lastCrashAt:  {type: string, format: date-time, nullable: true}
+
+  /sites/{id}/nlpl/logs:
+    get:
+      summary: Recent process stdout/stderr (ring buffer tail)
+      tags: [NLPL]
+      parameters:
+        - {name: id,   in: path,  required: true,  schema: {type: integer}}
+        - {name: tail, in: query, required: false, schema: {type: integer, default: 100, maximum: 500}}
+      responses:
+        '200':
+          description: Log lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lines: {type: array, items: {type: string}}
+                  count: {type: integer}
+
+  # ── Admin: processes ─────────────────────────────────────────────────────────
+
+  /admin/processes:
+    get:
+      summary: All running dynamic site processes (admin only)
+      tags: [Admin]
+      security: [{sessionCookie: []}]
+      responses:
+        '200':
+          description: Process list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processes: {type: array}
+                  total: {type: integer}
+
+  # ── Builds ───────────────────────────────────────────────────────────────────
+
+  /sites/{id}/builds/{buildId}:
+    get:
+      summary: Get build details and log
+      tags: [Builds]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,      in: path, required: true, schema: {type: integer}}
+        - {name: buildId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Build details including full log output}
+    delete:
+      summary: Cancel a queued build
+      tags: [Builds]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,      in: path, required: true, schema: {type: integer}}
+        - {name: buildId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Build cancelled}
+        '400': {description: Build cannot be cancelled (already running or finished)}
+
+  # ── Redirects and custom headers ─────────────────────────────────────────────
+
+  /sites/{id}/redirects/{ruleId}:
+    delete:
+      summary: Delete a redirect rule
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,     in: path, required: true, schema: {type: integer}}
+        - {name: ruleId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Rule deleted}
+
+  /sites/{id}/headers/{headerId}:
+    delete:
+      summary: Delete a custom response header
+      tags: [Sites]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: headerId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Header deleted}
+
+  # ── Forms ────────────────────────────────────────────────────────────────────
+
+  /sites/{id}/forms/{formName}/export:
+    get:
+      summary: Export form submissions as CSV
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: formName, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: CSV download
+          content:
+            text/csv:
+              schema: {type: string}
+
+  /sites/{id}/forms/{submissionId}:
+    patch:
+      summary: Mark a form submission as read/unread or add a note
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,           in: path, required: true, schema: {type: integer}}
+        - {name: submissionId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200': {description: Submission updated}
+    delete:
+      summary: Delete a form submission
+      tags: [Forms]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,           in: path, required: true, schema: {type: integer}}
+        - {name: submissionId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Submission deleted}
+
+  /invitations/{token}:
+    get:
+      summary: Look up an invitation by token (for accept page)
+      tags: [Access]
+      parameters:
+        - {name: token, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Invitation details including site name and inviter}
+        '404': {description: Invitation not found or expired}
+
+  /sites/{id}/invitations/{inviteId}:
+    delete:
+      summary: Revoke a pending invitation
+      tags: [Access]
+      security: [{sessionCookie: []}, {bearerToken: []}]
+      parameters:
+        - {name: id,       in: path, required: true, schema: {type: integer}}
+        - {name: inviteId, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Invitation revoked}
 
   /stats/hourly:
     get:
@@ -10468,17 +11850,6 @@ components:
       responses:
         '204': {description: Invitation revoked}
 
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
   /stats/hourly:
     get:
       summary: Network-wide hourly activity (last 24h, for dashboard chart)
@@ -10903,17 +12274,6 @@ components:
       responses:
         '204': {description: Invitation revoked}
 
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
   /stats/hourly:
     get:
       summary: Network-wide hourly activity (last 24h, for dashboard chart)
@@ -11337,1757 +12697,6 @@ components:
         - {name: inviteId, in: path, required: true, schema: {type: integer}}
       responses:
         '204': {description: Invitation revoked}
-
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
-  /stats/hourly:
-    get:
-      summary: Network-wide hourly activity (last 24h, for dashboard chart)
-      tags: [Analytics]
-      responses:
-        '200': {description: Array of hourly buckets with deployment and event counts}
-
-  /nodes/{id}/update-capacity:
-    post:
-      summary: Update a node's reported storage and bandwidth capacity (node-to-node)
-      tags: [Nodes]
-      security: [{bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Capacity updated}
-
-  /sites/{id}/env/{key}:
-    delete:
-      summary: Delete a single env var by key
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,  in: path, required: true, schema: {type: integer}}
-        - {name: key, in: path, required: true, schema: {type: string}}
-      responses:
-        '204': {description: Env var deleted}
-
-  /sites/{id}/transfer/accept:
-    post:
-      summary: Accept a site transfer (new owner only)
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [toEmail]
-              properties:
-                toEmail: {type: string, format: email}
-      responses:
-        '200': {description: Transfer accepted — caller is now the site owner}
-
-  /webhooks/config:
-    get:
-      summary: Node-level webhook configuration (operator endpoint URLs)
-      tags: [Webhooks]
-      security: [{sessionCookie: []}]
-      responses:
-        '200': {description: Webhook configuration and recent delivery stats}
-
-  /webhooks/test:
-    post:
-      summary: Send a test webhook delivery to all configured endpoints
-      tags: [Webhooks]
-      security: [{sessionCookie: []}]
-      responses:
-        '200': {description: Test delivery sent}
-
-  # ── TLS / ACME ───────────────────────────────────────────────────────────────
-
-  /.well-known/acme-challenge/{token}:
-    get:
-      summary: Serve HTTP-01 ACME challenge response (Let's Encrypt)
-      tags: [TLS]
-      parameters:
-        - {name: token, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: keyAuthorization string for the challenge token}
-        '404': {description: No active challenge for this token}
-
-  # ── Storage (internal) ───────────────────────────────────────────────────────
-
-  /storage/public-objects/{filePath*}:
-    get:
-      summary: Serve a public object by path (internal — prefer site-domain routing)
-      tags: [Storage]
-      parameters:
-        - {name: filePath, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content}
-        '404': {description: File not found}
-
-  /storage/objects/{path*}:
-    get:
-      summary: Serve a private object by path (requires authentication)
-      tags: [Storage]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: path, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content}
-
-  /sites/serve/{domain}/{filePath*}:
-    get:
-      summary: Serve a site file by domain and path (used for previews)
-      tags: [Deploy]
-      parameters:
-        - {name: domain,   in: path, required: true, schema: {type: string}}
-        - {name: filePath, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content with correct Content-Type}
-        '404': {description: File not found}
-
-
-  /tokens/{id}:
-    delete:
-      summary: Revoke an API token
-      tags: [Auth]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Token revoked}
-        '404': {description: Token not found}
-
-  /auth/2fa/status:
-    get:
-      summary: Check whether 2FA is enabled for the current user
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      responses:
-        '200':
-          description: 2FA status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  enabled:   {type: boolean}
-                  enabledAt: {type: string, format: date-time, nullable: true}
-
-  /auth/2fa/disable:
-    post:
-      summary: Disable 2FA (requires current TOTP code or backup code)
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 10}
-      responses:
-        '200': {description: 2FA disabled}
-
-  /auth/2fa/backup:
-    post:
-      summary: Regenerate backup codes (invalidates existing codes)
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 6, description: Current TOTP code to confirm identity}
-      responses:
-        '200':
-          description: New backup codes (only shown once)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  backupCodes: {type: array, items: {type: string}}
-
-  /auth/2fa/complete:
-    post:
-      summary: Complete a 2FA login challenge (upgrades pending session to authenticated)
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 10, description: TOTP code or backup code}
-      responses:
-        '200':
-          description: Authentication complete — session upgraded
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  authenticated: {type: boolean}
-                  method: {type: string, enum: [totp, backup]}
-        '401': {description: No pending 2FA session}
-        '400': {description: Invalid code or account locked}
-
-  /nlpl/runtime-info:
-    get:
-      summary: NLPL interpreter availability, version, and port range
-      tags: [NLPL]
-      responses:
-        '200':
-          description: Runtime info
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  available:         {type: boolean}
-                  interpreterPath:   {type: string}
-                  nlplVersion:       {type: string, nullable: true}
-                  pythonVersion:     {type: string, nullable: true}
-                  portRange:         {type: object, properties: {start: {type: integer}, end: {type: integer}}}
-                  installInstructions: {type: string, nullable: true}
-
-  /sites/{id}/nlpl/start:
-    post:
-      summary: Start (or restart) the dynamic process for a site
-      tags: [NLPL]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                entryFile: {type: string, default: server.nlpl, description: Entry file relative to site root}
-      responses:
-        '200':
-          description: Process started — returns allocated port
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:    {type: string, enum: [running]}
-                  port:      {type: integer}
-                  runtime:   {type: string, enum: [nlpl, node, python]}
-                  entryFile: {type: string}
-        '400': {description: No active deployment or entry file not found}
-        '404': {description: Site not found}
-
-  /sites/{id}/nlpl/stop:
-    post:
-      summary: Stop the dynamic process for a site
-      tags: [NLPL]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Process stopped}
-
-  /sites/{id}/nlpl/status:
-    get:
-      summary: Process status, port, PID, and restart count
-      tags: [NLPL]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200':
-          description: Process status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:       {type: string, enum: [running, starting, crashed, stopped]}
-                  port:         {type: integer, nullable: true}
-                  pid:          {type: integer, nullable: true}
-                  runtime:      {type: string, nullable: true}
-                  restartCount: {type: integer}
-                  startedAt:    {type: string, format: date-time, nullable: true}
-                  lastCrashAt:  {type: string, format: date-time, nullable: true}
-
-  /sites/{id}/nlpl/logs:
-    get:
-      summary: Recent process stdout/stderr (ring buffer tail)
-      tags: [NLPL]
-      parameters:
-        - {name: id,   in: path,  required: true,  schema: {type: integer}}
-        - {name: tail, in: query, required: false, schema: {type: integer, default: 100, maximum: 500}}
-      responses:
-        '200':
-          description: Log lines
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lines: {type: array, items: {type: string}}
-                  count: {type: integer}
-
-  # ── Admin: processes ─────────────────────────────────────────────────────────
-
-  /admin/processes:
-    get:
-      summary: All running dynamic site processes (admin only)
-      tags: [Admin]
-      security: [{sessionCookie: []}]
-      responses:
-        '200':
-          description: Process list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  processes: {type: array}
-                  total: {type: integer}
-
-  # ── Builds ───────────────────────────────────────────────────────────────────
-
-  /sites/{id}/builds/{buildId}:
-    get:
-      summary: Get build details and log
-      tags: [Builds]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,      in: path, required: true, schema: {type: integer}}
-        - {name: buildId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Build details including full log output}
-    delete:
-      summary: Cancel a queued build
-      tags: [Builds]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,      in: path, required: true, schema: {type: integer}}
-        - {name: buildId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Build cancelled}
-        '400': {description: Build cannot be cancelled (already running or finished)}
-
-  # ── Redirects and custom headers ─────────────────────────────────────────────
-
-  /sites/{id}/redirects/{ruleId}:
-    delete:
-      summary: Delete a redirect rule
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path, required: true, schema: {type: integer}}
-        - {name: ruleId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Rule deleted}
-
-  /sites/{id}/headers/{headerId}:
-    delete:
-      summary: Delete a custom response header
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: headerId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Header deleted}
-
-  # ── Forms ────────────────────────────────────────────────────────────────────
-
-  /sites/{id}/forms/{formName}/export:
-    get:
-      summary: Export form submissions as CSV
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: formName, in: path, required: true, schema: {type: string}}
-      responses:
-        '200':
-          description: CSV download
-          content:
-            text/csv:
-              schema: {type: string}
-
-  /sites/{id}/forms/{submissionId}:
-    patch:
-      summary: Mark a form submission as read/unread or add a note
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,           in: path, required: true, schema: {type: integer}}
-        - {name: submissionId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Submission updated}
-    delete:
-      summary: Delete a form submission
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,           in: path, required: true, schema: {type: integer}}
-        - {name: submissionId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Submission deleted}
-
-  /invitations/{token}:
-    get:
-      summary: Look up an invitation by token (for accept page)
-      tags: [Access]
-      parameters:
-        - {name: token, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: Invitation details including site name and inviter}
-        '404': {description: Invitation not found or expired}
-
-  /sites/{id}/invitations/{inviteId}:
-    delete:
-      summary: Revoke a pending invitation
-      tags: [Access]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: inviteId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Invitation revoked}
-
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
-  /stats/hourly:
-    get:
-      summary: Network-wide hourly activity (last 24h, for dashboard chart)
-      tags: [Analytics]
-      responses:
-        '200': {description: Array of hourly buckets with deployment and event counts}
-
-  /nodes/{id}/update-capacity:
-    post:
-      summary: Update a node's reported storage and bandwidth capacity (node-to-node)
-      tags: [Nodes]
-      security: [{bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Capacity updated}
-
-  /sites/{id}/env/{key}:
-    delete:
-      summary: Delete a single env var by key
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,  in: path, required: true, schema: {type: integer}}
-        - {name: key, in: path, required: true, schema: {type: string}}
-      responses:
-        '204': {description: Env var deleted}
-
-  /sites/{id}/transfer/accept:
-    post:
-      summary: Accept a site transfer (new owner only)
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [toEmail]
-              properties:
-                toEmail: {type: string, format: email}
-      responses:
-        '200': {description: Transfer accepted — caller is now the site owner}
-
-  /webhooks/config:
-    get:
-      summary: Node-level webhook configuration (operator endpoint URLs)
-      tags: [Webhooks]
-      security: [{sessionCookie: []}]
-      responses:
-        '200': {description: Webhook configuration and recent delivery stats}
-
-  /webhooks/test:
-    post:
-      summary: Send a test webhook delivery to all configured endpoints
-      tags: [Webhooks]
-      security: [{sessionCookie: []}]
-      responses:
-        '200': {description: Test delivery sent}
-
-  # ── TLS / ACME ───────────────────────────────────────────────────────────────
-
-  /.well-known/acme-challenge/{token}:
-    get:
-      summary: Serve HTTP-01 ACME challenge response (Let's Encrypt)
-      tags: [TLS]
-      parameters:
-        - {name: token, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: keyAuthorization string for the challenge token}
-        '404': {description: No active challenge for this token}
-
-  # ── Storage (internal) ───────────────────────────────────────────────────────
-
-  /storage/public-objects/{filePath*}:
-    get:
-      summary: Serve a public object by path (internal — prefer site-domain routing)
-      tags: [Storage]
-      parameters:
-        - {name: filePath, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content}
-        '404': {description: File not found}
-
-  /storage/objects/{path*}:
-    get:
-      summary: Serve a private object by path (requires authentication)
-      tags: [Storage]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: path, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content}
-
-  /sites/serve/{domain}/{filePath*}:
-    get:
-      summary: Serve a site file by domain and path (used for previews)
-      tags: [Deploy]
-      parameters:
-        - {name: domain,   in: path, required: true, schema: {type: string}}
-        - {name: filePath, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content with correct Content-Type}
-        '404': {description: File not found}
-
-
-  /tokens/{id}:
-    delete:
-      summary: Revoke an API token
-      tags: [Auth]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Token revoked}
-        '404': {description: Token not found}
-
-  /auth/2fa/status:
-    get:
-      summary: Check whether 2FA is enabled for the current user
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      responses:
-        '200':
-          description: 2FA status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  enabled:   {type: boolean}
-                  enabledAt: {type: string, format: date-time, nullable: true}
-
-  /auth/2fa/disable:
-    post:
-      summary: Disable 2FA (requires current TOTP code or backup code)
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 10}
-      responses:
-        '200': {description: 2FA disabled}
-
-  /auth/2fa/backup:
-    post:
-      summary: Regenerate backup codes (invalidates existing codes)
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 6, description: Current TOTP code to confirm identity}
-      responses:
-        '200':
-          description: New backup codes (only shown once)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  backupCodes: {type: array, items: {type: string}}
-
-  /auth/2fa/complete:
-    post:
-      summary: Complete a 2FA login challenge (upgrades pending session to authenticated)
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 10, description: TOTP code or backup code}
-      responses:
-        '200':
-          description: Authentication complete — session upgraded
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  authenticated: {type: boolean}
-                  method: {type: string, enum: [totp, backup]}
-        '401': {description: No pending 2FA session}
-        '400': {description: Invalid code or account locked}
-
-  /nlpl/runtime-info:
-    get:
-      summary: NLPL interpreter availability, version, and port range
-      tags: [NLPL]
-      responses:
-        '200':
-          description: Runtime info
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  available:         {type: boolean}
-                  interpreterPath:   {type: string}
-                  nlplVersion:       {type: string, nullable: true}
-                  pythonVersion:     {type: string, nullable: true}
-                  portRange:         {type: object, properties: {start: {type: integer}, end: {type: integer}}}
-                  installInstructions: {type: string, nullable: true}
-
-  /sites/{id}/nlpl/start:
-    post:
-      summary: Start (or restart) the dynamic process for a site
-      tags: [NLPL]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                entryFile: {type: string, default: server.nlpl, description: Entry file relative to site root}
-      responses:
-        '200':
-          description: Process started — returns allocated port
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:    {type: string, enum: [running]}
-                  port:      {type: integer}
-                  runtime:   {type: string, enum: [nlpl, node, python]}
-                  entryFile: {type: string}
-        '400': {description: No active deployment or entry file not found}
-        '404': {description: Site not found}
-
-  /sites/{id}/nlpl/stop:
-    post:
-      summary: Stop the dynamic process for a site
-      tags: [NLPL]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Process stopped}
-
-  /sites/{id}/nlpl/status:
-    get:
-      summary: Process status, port, PID, and restart count
-      tags: [NLPL]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200':
-          description: Process status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:       {type: string, enum: [running, starting, crashed, stopped]}
-                  port:         {type: integer, nullable: true}
-                  pid:          {type: integer, nullable: true}
-                  runtime:      {type: string, nullable: true}
-                  restartCount: {type: integer}
-                  startedAt:    {type: string, format: date-time, nullable: true}
-                  lastCrashAt:  {type: string, format: date-time, nullable: true}
-
-  /sites/{id}/nlpl/logs:
-    get:
-      summary: Recent process stdout/stderr (ring buffer tail)
-      tags: [NLPL]
-      parameters:
-        - {name: id,   in: path,  required: true,  schema: {type: integer}}
-        - {name: tail, in: query, required: false, schema: {type: integer, default: 100, maximum: 500}}
-      responses:
-        '200':
-          description: Log lines
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lines: {type: array, items: {type: string}}
-                  count: {type: integer}
-
-  # ── Admin: processes ─────────────────────────────────────────────────────────
-
-  /admin/processes:
-    get:
-      summary: All running dynamic site processes (admin only)
-      tags: [Admin]
-      security: [{sessionCookie: []}]
-      responses:
-        '200':
-          description: Process list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  processes: {type: array}
-                  total: {type: integer}
-
-  # ── Builds ───────────────────────────────────────────────────────────────────
-
-  /sites/{id}/builds/{buildId}:
-    get:
-      summary: Get build details and log
-      tags: [Builds]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,      in: path, required: true, schema: {type: integer}}
-        - {name: buildId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Build details including full log output}
-    delete:
-      summary: Cancel a queued build
-      tags: [Builds]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,      in: path, required: true, schema: {type: integer}}
-        - {name: buildId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Build cancelled}
-        '400': {description: Build cannot be cancelled (already running or finished)}
-
-  # ── Redirects and custom headers ─────────────────────────────────────────────
-
-  /sites/{id}/redirects/{ruleId}:
-    delete:
-      summary: Delete a redirect rule
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path, required: true, schema: {type: integer}}
-        - {name: ruleId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Rule deleted}
-
-  /sites/{id}/headers/{headerId}:
-    delete:
-      summary: Delete a custom response header
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: headerId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Header deleted}
-
-  # ── Forms ────────────────────────────────────────────────────────────────────
-
-  /sites/{id}/forms/{formName}/export:
-    get:
-      summary: Export form submissions as CSV
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: formName, in: path, required: true, schema: {type: string}}
-      responses:
-        '200':
-          description: CSV download
-          content:
-            text/csv:
-              schema: {type: string}
-
-  /sites/{id}/forms/{submissionId}:
-    patch:
-      summary: Mark a form submission as read/unread or add a note
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,           in: path, required: true, schema: {type: integer}}
-        - {name: submissionId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Submission updated}
-    delete:
-      summary: Delete a form submission
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,           in: path, required: true, schema: {type: integer}}
-        - {name: submissionId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Submission deleted}
-
-  /invitations/{token}:
-    get:
-      summary: Look up an invitation by token (for accept page)
-      tags: [Access]
-      parameters:
-        - {name: token, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: Invitation details including site name and inviter}
-        '404': {description: Invitation not found or expired}
-
-  /sites/{id}/invitations/{inviteId}:
-    delete:
-      summary: Revoke a pending invitation
-      tags: [Access]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: inviteId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Invitation revoked}
-
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
-  /stats/hourly:
-    get:
-      summary: Network-wide hourly activity (last 24h, for dashboard chart)
-      tags: [Analytics]
-      responses:
-        '200': {description: Array of hourly buckets with deployment and event counts}
-
-  /nodes/{id}/update-capacity:
-    post:
-      summary: Update a node's reported storage and bandwidth capacity (node-to-node)
-      tags: [Nodes]
-      security: [{bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Capacity updated}
-
-  /sites/{id}/env/{key}:
-    delete:
-      summary: Delete a single env var by key
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,  in: path, required: true, schema: {type: integer}}
-        - {name: key, in: path, required: true, schema: {type: string}}
-      responses:
-        '204': {description: Env var deleted}
-
-  /sites/{id}/transfer/accept:
-    post:
-      summary: Accept a site transfer (new owner only)
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [toEmail]
-              properties:
-                toEmail: {type: string, format: email}
-      responses:
-        '200': {description: Transfer accepted — caller is now the site owner}
-
-  /webhooks/config:
-    get:
-      summary: Node-level webhook configuration (operator endpoint URLs)
-      tags: [Webhooks]
-      security: [{sessionCookie: []}]
-      responses:
-        '200': {description: Webhook configuration and recent delivery stats}
-
-  /webhooks/test:
-    post:
-      summary: Send a test webhook delivery to all configured endpoints
-      tags: [Webhooks]
-      security: [{sessionCookie: []}]
-      responses:
-        '200': {description: Test delivery sent}
-
-  # ── TLS / ACME ───────────────────────────────────────────────────────────────
-
-  /.well-known/acme-challenge/{token}:
-    get:
-      summary: Serve HTTP-01 ACME challenge response (Let's Encrypt)
-      tags: [TLS]
-      parameters:
-        - {name: token, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: keyAuthorization string for the challenge token}
-        '404': {description: No active challenge for this token}
-
-  # ── Storage (internal) ───────────────────────────────────────────────────────
-
-  /storage/public-objects/{filePath*}:
-    get:
-      summary: Serve a public object by path (internal — prefer site-domain routing)
-      tags: [Storage]
-      parameters:
-        - {name: filePath, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content}
-        '404': {description: File not found}
-
-  /storage/objects/{path*}:
-    get:
-      summary: Serve a private object by path (requires authentication)
-      tags: [Storage]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: path, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content}
-
-  /sites/serve/{domain}/{filePath*}:
-    get:
-      summary: Serve a site file by domain and path (used for previews)
-      tags: [Deploy]
-      parameters:
-        - {name: domain,   in: path, required: true, schema: {type: string}}
-        - {name: filePath, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content with correct Content-Type}
-        '404': {description: File not found}
-
-
-  /tokens/{id}:
-    delete:
-      summary: Revoke an API token
-      tags: [Auth]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Token revoked}
-        '404': {description: Token not found}
-
-  /auth/2fa/status:
-    get:
-      summary: Check whether 2FA is enabled for the current user
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      responses:
-        '200':
-          description: 2FA status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  enabled:   {type: boolean}
-                  enabledAt: {type: string, format: date-time, nullable: true}
-
-  /auth/2fa/disable:
-    post:
-      summary: Disable 2FA (requires current TOTP code or backup code)
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 10}
-      responses:
-        '200': {description: 2FA disabled}
-
-  /auth/2fa/backup:
-    post:
-      summary: Regenerate backup codes (invalidates existing codes)
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 6, description: Current TOTP code to confirm identity}
-      responses:
-        '200':
-          description: New backup codes (only shown once)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  backupCodes: {type: array, items: {type: string}}
-
-  /auth/2fa/complete:
-    post:
-      summary: Complete a 2FA login challenge (upgrades pending session to authenticated)
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 10, description: TOTP code or backup code}
-      responses:
-        '200':
-          description: Authentication complete — session upgraded
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  authenticated: {type: boolean}
-                  method: {type: string, enum: [totp, backup]}
-        '401': {description: No pending 2FA session}
-        '400': {description: Invalid code or account locked}
-
-  /nlpl/runtime-info:
-    get:
-      summary: NLPL interpreter availability, version, and port range
-      tags: [NLPL]
-      responses:
-        '200':
-          description: Runtime info
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  available:         {type: boolean}
-                  interpreterPath:   {type: string}
-                  nlplVersion:       {type: string, nullable: true}
-                  pythonVersion:     {type: string, nullable: true}
-                  portRange:         {type: object, properties: {start: {type: integer}, end: {type: integer}}}
-                  installInstructions: {type: string, nullable: true}
-
-  /sites/{id}/nlpl/start:
-    post:
-      summary: Start (or restart) the dynamic process for a site
-      tags: [NLPL]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                entryFile: {type: string, default: server.nlpl, description: Entry file relative to site root}
-      responses:
-        '200':
-          description: Process started — returns allocated port
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:    {type: string, enum: [running]}
-                  port:      {type: integer}
-                  runtime:   {type: string, enum: [nlpl, node, python]}
-                  entryFile: {type: string}
-        '400': {description: No active deployment or entry file not found}
-        '404': {description: Site not found}
-
-  /sites/{id}/nlpl/stop:
-    post:
-      summary: Stop the dynamic process for a site
-      tags: [NLPL]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Process stopped}
-
-  /sites/{id}/nlpl/status:
-    get:
-      summary: Process status, port, PID, and restart count
-      tags: [NLPL]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200':
-          description: Process status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:       {type: string, enum: [running, starting, crashed, stopped]}
-                  port:         {type: integer, nullable: true}
-                  pid:          {type: integer, nullable: true}
-                  runtime:      {type: string, nullable: true}
-                  restartCount: {type: integer}
-                  startedAt:    {type: string, format: date-time, nullable: true}
-                  lastCrashAt:  {type: string, format: date-time, nullable: true}
-
-  /sites/{id}/nlpl/logs:
-    get:
-      summary: Recent process stdout/stderr (ring buffer tail)
-      tags: [NLPL]
-      parameters:
-        - {name: id,   in: path,  required: true,  schema: {type: integer}}
-        - {name: tail, in: query, required: false, schema: {type: integer, default: 100, maximum: 500}}
-      responses:
-        '200':
-          description: Log lines
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lines: {type: array, items: {type: string}}
-                  count: {type: integer}
-
-  # ── Admin: processes ─────────────────────────────────────────────────────────
-
-  /admin/processes:
-    get:
-      summary: All running dynamic site processes (admin only)
-      tags: [Admin]
-      security: [{sessionCookie: []}]
-      responses:
-        '200':
-          description: Process list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  processes: {type: array}
-                  total: {type: integer}
-
-  # ── Builds ───────────────────────────────────────────────────────────────────
-
-  /sites/{id}/builds/{buildId}:
-    get:
-      summary: Get build details and log
-      tags: [Builds]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,      in: path, required: true, schema: {type: integer}}
-        - {name: buildId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Build details including full log output}
-    delete:
-      summary: Cancel a queued build
-      tags: [Builds]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,      in: path, required: true, schema: {type: integer}}
-        - {name: buildId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Build cancelled}
-        '400': {description: Build cannot be cancelled (already running or finished)}
-
-  # ── Redirects and custom headers ─────────────────────────────────────────────
-
-  /sites/{id}/redirects/{ruleId}:
-    delete:
-      summary: Delete a redirect rule
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path, required: true, schema: {type: integer}}
-        - {name: ruleId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Rule deleted}
-
-  /sites/{id}/headers/{headerId}:
-    delete:
-      summary: Delete a custom response header
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: headerId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Header deleted}
-
-  # ── Forms ────────────────────────────────────────────────────────────────────
-
-  /sites/{id}/forms/{formName}/export:
-    get:
-      summary: Export form submissions as CSV
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: formName, in: path, required: true, schema: {type: string}}
-      responses:
-        '200':
-          description: CSV download
-          content:
-            text/csv:
-              schema: {type: string}
-
-  /sites/{id}/forms/{submissionId}:
-    patch:
-      summary: Mark a form submission as read/unread or add a note
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,           in: path, required: true, schema: {type: integer}}
-        - {name: submissionId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Submission updated}
-    delete:
-      summary: Delete a form submission
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,           in: path, required: true, schema: {type: integer}}
-        - {name: submissionId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Submission deleted}
-
-  /invitations/{token}:
-    get:
-      summary: Look up an invitation by token (for accept page)
-      tags: [Access]
-      parameters:
-        - {name: token, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: Invitation details including site name and inviter}
-        '404': {description: Invitation not found or expired}
-
-  /sites/{id}/invitations/{inviteId}:
-    delete:
-      summary: Revoke a pending invitation
-      tags: [Access]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: inviteId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Invitation revoked}
-
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
-
-  /stats/hourly:
-    get:
-      summary: Network-wide hourly activity (last 24h, for dashboard chart)
-      tags: [Analytics]
-      responses:
-        '200': {description: Array of hourly buckets with deployment and event counts}
-
-  /nodes/{id}/update-capacity:
-    post:
-      summary: Update a node's reported storage and bandwidth capacity (node-to-node)
-      tags: [Nodes]
-      security: [{bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Capacity updated}
-
-  /sites/{id}/env/{key}:
-    delete:
-      summary: Delete a single env var by key
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,  in: path, required: true, schema: {type: integer}}
-        - {name: key, in: path, required: true, schema: {type: string}}
-      responses:
-        '204': {description: Env var deleted}
-
-  /sites/{id}/transfer/accept:
-    post:
-      summary: Accept a site transfer (new owner only)
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [toEmail]
-              properties:
-                toEmail: {type: string, format: email}
-      responses:
-        '200': {description: Transfer accepted — caller is now the site owner}
-
-  /webhooks/config:
-    get:
-      summary: Node-level webhook configuration (operator endpoint URLs)
-      tags: [Webhooks]
-      security: [{sessionCookie: []}]
-      responses:
-        '200': {description: Webhook configuration and recent delivery stats}
-
-  /webhooks/test:
-    post:
-      summary: Send a test webhook delivery to all configured endpoints
-      tags: [Webhooks]
-      security: [{sessionCookie: []}]
-      responses:
-        '200': {description: Test delivery sent}
-
-  # ── TLS / ACME ───────────────────────────────────────────────────────────────
-
-  /.well-known/acme-challenge/{token}:
-    get:
-      summary: Serve HTTP-01 ACME challenge response (Let's Encrypt)
-      tags: [TLS]
-      parameters:
-        - {name: token, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: keyAuthorization string for the challenge token}
-        '404': {description: No active challenge for this token}
-
-  # ── Storage (internal) ───────────────────────────────────────────────────────
-
-  /storage/public-objects/{filePath*}:
-    get:
-      summary: Serve a public object by path (internal — prefer site-domain routing)
-      tags: [Storage]
-      parameters:
-        - {name: filePath, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content}
-        '404': {description: File not found}
-
-  /storage/objects/{path*}:
-    get:
-      summary: Serve a private object by path (requires authentication)
-      tags: [Storage]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: path, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content}
-
-  /sites/serve/{domain}/{filePath*}:
-    get:
-      summary: Serve a site file by domain and path (used for previews)
-      tags: [Deploy]
-      parameters:
-        - {name: domain,   in: path, required: true, schema: {type: string}}
-        - {name: filePath, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: File content with correct Content-Type}
-        '404': {description: File not found}
-
-
-  /tokens/{id}:
-    delete:
-      summary: Revoke an API token
-      tags: [Auth]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Token revoked}
-        '404': {description: Token not found}
-
-  /auth/2fa/status:
-    get:
-      summary: Check whether 2FA is enabled for the current user
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      responses:
-        '200':
-          description: 2FA status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  enabled:   {type: boolean}
-                  enabledAt: {type: string, format: date-time, nullable: true}
-
-  /auth/2fa/disable:
-    post:
-      summary: Disable 2FA (requires current TOTP code or backup code)
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 10}
-      responses:
-        '200': {description: 2FA disabled}
-
-  /auth/2fa/backup:
-    post:
-      summary: Regenerate backup codes (invalidates existing codes)
-      tags: [Auth]
-      security: [{sessionCookie: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 6, description: Current TOTP code to confirm identity}
-      responses:
-        '200':
-          description: New backup codes (only shown once)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  backupCodes: {type: array, items: {type: string}}
-
-  /auth/2fa/complete:
-    post:
-      summary: Complete a 2FA login challenge (upgrades pending session to authenticated)
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code: {type: string, minLength: 6, maxLength: 10, description: TOTP code or backup code}
-      responses:
-        '200':
-          description: Authentication complete — session upgraded
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  authenticated: {type: boolean}
-                  method: {type: string, enum: [totp, backup]}
-        '401': {description: No pending 2FA session}
-        '400': {description: Invalid code or account locked}
-
-  /nlpl/runtime-info:
-    get:
-      summary: NLPL interpreter availability, version, and port range
-      tags: [NLPL]
-      responses:
-        '200':
-          description: Runtime info
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  available:         {type: boolean}
-                  interpreterPath:   {type: string}
-                  nlplVersion:       {type: string, nullable: true}
-                  pythonVersion:     {type: string, nullable: true}
-                  portRange:         {type: object, properties: {start: {type: integer}, end: {type: integer}}}
-                  installInstructions: {type: string, nullable: true}
-
-  /sites/{id}/nlpl/start:
-    post:
-      summary: Start (or restart) the dynamic process for a site
-      tags: [NLPL]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                entryFile: {type: string, default: server.nlpl, description: Entry file relative to site root}
-      responses:
-        '200':
-          description: Process started — returns allocated port
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:    {type: string, enum: [running]}
-                  port:      {type: integer}
-                  runtime:   {type: string, enum: [nlpl, node, python]}
-                  entryFile: {type: string}
-        '400': {description: No active deployment or entry file not found}
-        '404': {description: Site not found}
-
-  /sites/{id}/nlpl/stop:
-    post:
-      summary: Stop the dynamic process for a site
-      tags: [NLPL]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Process stopped}
-
-  /sites/{id}/nlpl/status:
-    get:
-      summary: Process status, port, PID, and restart count
-      tags: [NLPL]
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200':
-          description: Process status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:       {type: string, enum: [running, starting, crashed, stopped]}
-                  port:         {type: integer, nullable: true}
-                  pid:          {type: integer, nullable: true}
-                  runtime:      {type: string, nullable: true}
-                  restartCount: {type: integer}
-                  startedAt:    {type: string, format: date-time, nullable: true}
-                  lastCrashAt:  {type: string, format: date-time, nullable: true}
-
-  /sites/{id}/nlpl/logs:
-    get:
-      summary: Recent process stdout/stderr (ring buffer tail)
-      tags: [NLPL]
-      parameters:
-        - {name: id,   in: path,  required: true,  schema: {type: integer}}
-        - {name: tail, in: query, required: false, schema: {type: integer, default: 100, maximum: 500}}
-      responses:
-        '200':
-          description: Log lines
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lines: {type: array, items: {type: string}}
-                  count: {type: integer}
-
-  # ── Admin: processes ─────────────────────────────────────────────────────────
-
-  /admin/processes:
-    get:
-      summary: All running dynamic site processes (admin only)
-      tags: [Admin]
-      security: [{sessionCookie: []}]
-      responses:
-        '200':
-          description: Process list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  processes: {type: array}
-                  total: {type: integer}
-
-  # ── Builds ───────────────────────────────────────────────────────────────────
-
-  /sites/{id}/builds/{buildId}:
-    get:
-      summary: Get build details and log
-      tags: [Builds]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,      in: path, required: true, schema: {type: integer}}
-        - {name: buildId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Build details including full log output}
-    delete:
-      summary: Cancel a queued build
-      tags: [Builds]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,      in: path, required: true, schema: {type: integer}}
-        - {name: buildId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Build cancelled}
-        '400': {description: Build cannot be cancelled (already running or finished)}
-
-  # ── Redirects and custom headers ─────────────────────────────────────────────
-
-  /sites/{id}/redirects/{ruleId}:
-    delete:
-      summary: Delete a redirect rule
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path, required: true, schema: {type: integer}}
-        - {name: ruleId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Rule deleted}
-
-  /sites/{id}/headers/{headerId}:
-    delete:
-      summary: Delete a custom response header
-      tags: [Sites]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: headerId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Header deleted}
-
-  # ── Forms ────────────────────────────────────────────────────────────────────
-
-  /sites/{id}/forms/{formName}/export:
-    get:
-      summary: Export form submissions as CSV
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: formName, in: path, required: true, schema: {type: string}}
-      responses:
-        '200':
-          description: CSV download
-          content:
-            text/csv:
-              schema: {type: string}
-
-  /sites/{id}/forms/{submissionId}:
-    patch:
-      summary: Mark a form submission as read/unread or add a note
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,           in: path, required: true, schema: {type: integer}}
-        - {name: submissionId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '200': {description: Submission updated}
-    delete:
-      summary: Delete a form submission
-      tags: [Forms]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,           in: path, required: true, schema: {type: integer}}
-        - {name: submissionId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Submission deleted}
-
-  /invitations/{token}:
-    get:
-      summary: Look up an invitation by token (for accept page)
-      tags: [Access]
-      parameters:
-        - {name: token, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: Invitation details including site name and inviter}
-        '404': {description: Invitation not found or expired}
-
-  /sites/{id}/invitations/{inviteId}:
-    delete:
-      summary: Revoke a pending invitation
-      tags: [Access]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,       in: path, required: true, schema: {type: integer}}
-        - {name: inviteId, in: path, required: true, schema: {type: integer}}
-      responses:
-        '204': {description: Invitation revoked}
-
-  /sites/{id}/analytics/referrers:
-    get:
-      summary: Top referrers for a site over a time period
-      tags: [Analytics]
-      security: [{sessionCookie: []}, {bearerToken: []}]
-      parameters:
-        - {name: id,     in: path,  required: true, schema: {type: integer}}
-        - {name: period, in: query, required: false, schema: {type: string, enum: [24h, 7d, 30d], default: 7d}}
-      responses:
-        '200': {description: Referrer list with hit counts}
 
   /stats/hourly:
     get:

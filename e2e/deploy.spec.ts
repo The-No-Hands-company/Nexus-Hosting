@@ -124,12 +124,9 @@ test.describe("End-to-end deploy flow", () => {
   test("step 8: analytics endpoint returns data for site", async ({ authedRequest }) => {
     const res = await authedRequest.get(`/api/sites/${siteId}/analytics?period=24h`);
     expect(res.status()).toBe(200);
-    const body = await res.json() as {
-      period: string;
-      totals: { hits: number; bytesServed: number; uniqueIps: number };
-    };
-    expect(body.period).toBe("24h");
-    expect(typeof body.totals.hits).toBe("number");
+    const body = await res.json() as { days: Array<{ day: string; path: string; views: number }> };
+    expect(Object.keys(body)).toEqual(["days"]);
+    expect(Array.isArray(body.days)).toBe(true);
   });
 
   test("step 9: deploy a second version (needed for rollback)", async ({ authedRequest, request }) => {

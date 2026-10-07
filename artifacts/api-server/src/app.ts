@@ -12,7 +12,7 @@ import { authMiddleware } from "./middlewares/authMiddleware";
 import { tokenAuthMiddleware } from "./middleware/tokenAuth";
 import { globalErrorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { globalLimiter, speedLimiter } from "./middleware/rateLimiter";
-import { apiBanMiddleware } from "./middleware/ipBan";
+import { apiBanMiddleware } from "./middleware/tagBan";
 import { hostRouter } from "./middleware/hostRouter";
 import router from "./routes";
 import { metricsMiddleware, registry } from "./lib/metrics";
@@ -30,8 +30,10 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 
 const app: Express = express();
 
-// ── Trust reverse proxy headers (X-Forwarded-For, X-Real-IP) ────────────────────
-// Required so express-rate-limit can correctly read X-Forwarded-For
+// ── Trust reverse proxy (protocol/host only) ────────────────────────────────────
+// The ecosystem proxy strips address headers and sends an opaque
+// x-nexus-client-tag instead; nothing here reads or stores a client address.
+// Rate limits and bans key on that tag (lib/clientTag.ts).
 app.set("trust proxy", 1);
 
 // ── Security headers ──────────────────────────────────────────────────────────

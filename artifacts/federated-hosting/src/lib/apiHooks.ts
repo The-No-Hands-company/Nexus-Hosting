@@ -87,26 +87,18 @@ export function useHealthStatus() {
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
 
-export interface AnalyticsHour {
-  id: number;
-  siteId: number;
-  hour: string;
-  hits: number;
-  bytesServed: number;
-  uniqueIps: number;
-  topReferrers: string;
-  topPaths: string;
+export interface PageViewRow {
+  day: string;
+  path: string;
+  views: number;
 }
 
+/** Page views per page per UTC day. Nothing about visitors is collected. */
 export interface SiteAnalyticsResponse {
-  period: string;
-  totals: { hits: number; bytesServed: number; uniqueIps: number };
-  hourly: AnalyticsHour[];
-  topReferrers: Array<{ referrer: string; count: number }>;
-  topPaths: Array<{ path: string; count: number }>;
+  days: PageViewRow[];
 }
 
-export function useSiteAnalytics(siteId: number, period = "24h") {
+export function useSiteAnalytics(siteId: number, period = "7d") {
   return useQuery<SiteAnalyticsResponse>({
     queryKey: ["analytics", siteId, period],
     queryFn: () => apiFetch(`/sites/${siteId}/analytics?period=${period}`),
@@ -125,7 +117,7 @@ export interface AdminOverview {
     totalUsers: number; totalDeploys: number;
     totalNodes: number; activeNodes: number;
   };
-  analytics24h: { hits: number; bytesServed: number };
+  pageViews: { today: number; last7d: number };
   recentEvents: Array<Record<string, unknown>>;
   storageByOwner: Array<{ ownerId: string | null; totalMb: number; siteCount: number }>;
   systemInfo: Record<string, unknown>;

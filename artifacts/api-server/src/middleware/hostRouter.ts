@@ -1,9 +1,10 @@
 import { type Request, type Response, type NextFunction } from "express";
-import { db, sitesTable, siteFilesTable, analyticsBufferTable, customDomainsTable, siteRedirectRulesTable, siteCustomHeadersTable, ipBansTable } from "@workspace/db";
-import { eq, and, isNull, or, gt } from "drizzle-orm";
+import { db, sitesTable, siteFilesTable, customDomainsTable, siteRedirectRulesTable, siteCustomHeadersTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { storage, ObjectNotFoundError } from "../lib/storageProvider";
-import { hashIp } from "../lib/analyticsFlush";
-import { getClientIp } from "./ipBan.js";
+import { recordPageView } from "../lib/pageViews";
+import { clientTag, clientTagKey } from "../lib/clientTag";
+import { isTagBanned } from "../lib/tagBan";
 import crypto from "crypto";
 import http from "http";
 import { getCachedSite, setCachedSite, getCachedFile, setCachedFile } from "../lib/domainCache";
@@ -12,21 +13,20 @@ import { getDockerContainer } from "../lib/dockerManager";
 import logger from "../lib/logger";
 import fs from "fs";
 import path from "path";
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit from "express-rate-limit";
 
-// Per-IP-per-host rate limit on site serving — prevents bandwidth/scraping abuse.
+// Per-client-tag-per-host rate limit on site serving — prevents bandwidth/scraping abuse.
 // 600 req/min per IP per host in production (~10 req/s sustained).
 // Created once at module init (not inside request handler) to satisfy express-rate-limit v8.
 const serveLimiter = rateLimit({
   windowMs: 60_000,
   max: process.env.NODE_ENV === "production" ? 600 : 100_000,
-  // req.ip is string | undefined; requests without a resolvable address share
-  // one bucket rather than each getting a fresh quota.
-  keyGenerator: (req) => `${ipKeyGenerator(req.ip ?? "0.0.0.0")}:${req.hostname}`,
+  // Keyed on the proxy's opaque client tag; requests without one share the
+  // "unknown" bucket rather than each getting a fresh quota.
+  keyGenerator: (req) => `${clientTagKey(req)}:${req.hostname}`,
   handler: (_req, res) => res.status(429).send("Too Many Requests"),
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  skip: (req) => req.ip === "127.0.0.1" || req.ip === "::1",
 });
 function getServeLimiter(_host: string) {
   return serveLimiter;
@@ -80,18 +80,14 @@ function isKnownInfraHost(host: string): boolean {
   return false;
 }
 
-function recordHit(siteId: number, path: string, req: Request, bytesServed: number): void {
-  const rawIp = req.ip ?? req.socket.remoteAddress ?? "";
-  const ipHash = rawIp ? hashIp(rawIp) : null;
-  const referrer = (req.headers["referer"] as string | undefined) ?? null;
-  db.insert(analyticsBufferTable)
-    .values({ siteId, path, referrer, ipHash, bytesServed })
-    .catch(() => {});
-
-  // Broadcast to any SSE subscribers watching this site in real-time
-  import("../routes/analytics").then(m => {
-    m.broadcastAnalyticsHit(siteId, path, referrer);
-  }).catch(() => {});
+/**
+ * Count a page view. Only HTML responses are pages (assets would inflate the
+ * counter and the row count), and the path is the file actually served, not
+ * the requested URL, so a SPA fallback cannot be used to mint unbounded rows.
+ */
+function countPageView(siteId: number, servedPath: string, contentType: string | null | undefined): void {
+  if (!contentType || !contentType.toLowerCase().includes("text/html")) return;
+  recordPageView(siteId, servedPath.startsWith("/") ? servedPath : `/${servedPath}`);
 }
 
 /** Verify HMAC-signed unlock cookie issued by POST /api/sites/:id/unlock */
@@ -299,24 +295,11 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
 
   if (!site) { next(); return; }
 
-  // ── IP ban check (sites scope) ────────────────────────────────────────────
-  // Check before serving any content — banned IPs get a plain 403.
-  // Uses the same ban table as the API middleware; cached for 60 seconds.
-  const visitorIp = getClientIp(req);
-  if (visitorIp && visitorIp !== "127.0.0.1" && visitorIp !== "::1") {
-    const now = new Date();
-    const [ban] = await db
-      .select({ scope: ipBansTable.scope })
-      .from(ipBansTable)
-      .where(and(
-        eq(ipBansTable.ipAddress, visitorIp),
-        or(isNull(ipBansTable.expiresAt), gt(ipBansTable.expiresAt, now)),
-      ))
-      .limit(1);
-    if (ban && (ban.scope === "all" || ban.scope === "sites")) {
-      res.status(403).send("Access denied.");
-      return;
-    }
+  // ── Client-tag ban check ──────────────────────────────────────────────────
+  // In-memory, admin-set, at most 24 h (lib/tagBan.ts). Banned tags get a plain 403.
+  if (isTagBanned(clientTag(req))) {
+    res.status(403).send("Access denied.");
+    return;
   }
 
   // ── Site status checks ────────────────────────────────────────────────────
@@ -373,6 +356,12 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
     // Parse proxy target URL
     const targetUrl = new URL(req.url, proxyTarget);
 
+    // The client tag is ours; never hand it (or any address header) to a hosted app.
+    const upstreamHeaders = { ...req.headers };
+    delete upstreamHeaders["x-nexus-client-tag"];
+    delete upstreamHeaders["x-forwarded-for"];
+    delete upstreamHeaders["x-real-ip"];
+
     const proxyReq = http.request(
       {
         host: "127.0.0.1",
@@ -380,9 +369,8 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
         path: req.url,
         method: req.method,
         headers: {
-          ...req.headers,
+          ...upstreamHeaders,
           host: host,  // forward original host header
-          "x-forwarded-for": req.ip ?? "",
           "x-forwarded-proto": "https",
           "x-site-domain": host,
         },
@@ -394,7 +382,7 @@ export async function hostRouter(req: Request, res: Response, next: NextFunction
         }
         res.setHeader("X-Served-By", "nexus-hosting-proxy");
         proxyRes.pipe(res);
-        recordHit(site.id, req.path, req, 0);
+        countPageView(site.id, req.path, proxyRes.headers["content-type"]);
       },
     );
 
@@ -478,7 +466,7 @@ ${urls}
           res.setHeader("X-Served-By", "nexus-hosting");
           res.setHeader("Cache-Control", "public, max-age=3600");
           await storage.streamToResponse(fileRecord.objectPath, res);
-          recordHit(site.id, rewritePath, req, fileRecord.sizeBytes ?? 0);
+          countPageView(site.id, rewritePath, fileRecord.contentType);
           return;
         }
       } else if (rule.status === 404) {
@@ -519,7 +507,7 @@ ${urls}
         return true;
       }
       await storage.streamToResponse(fileRecord.objectPath, res);
-      recordHit(site!.id, filePath, req, fileRecord.sizeBytes ?? 0);
+      countPageView(site!.id, filePath, fileRecord.contentType);
       return true;
     } catch (err) {
       if (err instanceof ObjectNotFoundError) return false;

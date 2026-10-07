@@ -22,7 +22,7 @@ if (LOW_RESOURCE) {
   process.env.DOMAIN_CACHE_MAX            = process.env.DOMAIN_CACHE_MAX ?? "500";
   process.env.FILE_CACHE_MAX              = process.env.FILE_CACHE_MAX   ?? "2000";
 }
-import { startAnalyticsFlusher, stopAnalyticsFlusher } from "./lib/analyticsFlush";
+import { startPageViewTotals, stopPageViewTotals } from "./lib/pageViews";
 import { startGossipPusher, stopGossipPusher } from "./routes/gossip";
 import { getRedisClient, closeRedis } from "./lib/redis";
 import { startSyncRetryQueue, stopSyncRetryQueue } from "./lib/syncRetryQueue";
@@ -90,7 +90,7 @@ function gracefulShutdown(server: http.Server, signal: string): void {
 
   server.close(async () => {
     try {
-      stopAnalyticsFlusher();
+      stopPageViewTotals();
       stopGossipPusher();
       stopSyncRetryQueue();
       stopAcmeRenewalScheduler();
@@ -133,7 +133,7 @@ ensureLocalNode()
 
     startSiteHealthMonitor();
     await loadBlocklist();
-    startAnalyticsFlusher();
+    startPageViewTotals();
 
     // Ensure S3 bucket exists (creates it if missing — makes docker compose up work without manual MinIO setup)
     await ensureBucketExists();

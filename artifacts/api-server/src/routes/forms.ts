@@ -31,28 +31,28 @@ import { db, sitesTable, formSubmissionsTable } from "@workspace/db";
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { asyncHandler, AppError } from "../lib/errors";
 import { writeLimiter } from "../middleware/rateLimiter";
-import { hashIp } from "../lib/analyticsFlush";
+import { clientTagKey } from "../lib/clientTag";
 import { emailFormSubmission } from "../lib/email";
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit from "express-rate-limit";
 import logger from "../lib/logger";
 
 const router: IRouter = Router();
 
-// Strict per-IP rate limit for form submissions to deter spam
+// Strict per-client-tag rate limit for form submissions to deter spam
 const formSubmitLimiter = rateLimit({
   windowMs: 60_000,
   max: process.env.NODE_ENV === "production" ? 5 : 1000,
-  keyGenerator: (req) => ipKeyGenerator(req.ip ?? "0.0.0.0"),
+  keyGenerator: clientTagKey,
   handler: (_req, res) => res.status(429).json({ error: "Too many submissions. Please wait." }),
   standardHeaders: "draft-7",
   legacyHeaders: false,
 });
 
-// Additional per-site + per-IP limiter: max 3 submissions per IP per site per hour
+// Additional per-site + per-tag limiter: max 3 submissions per tag per site per hour
 const formSiteLimiter = rateLimit({
   windowMs: 60 * 60_000,
   max: process.env.NODE_ENV === "production" ? 3 : 1000,
-  keyGenerator: (req) => `${ipKeyGenerator(req.ip ?? "0.0.0.0")}:${req.params.domain ?? ""}:${req.params.formName ?? ""}`,
+  keyGenerator: (req) => `${clientTagKey(req)}:${req.params.domain ?? ""}:${req.params.formName ?? ""}`,
   handler: (_req, res) => res.status(429).json({ error: "Submission limit reached for this form. Please try again later." }),
   standardHeaders: "draft-7",
   legacyHeaders: false,
@@ -127,14 +127,11 @@ router.post("/forms/:domain/:formName", formSubmitLimiter, formSiteLimiter, asyn
 
   const spamScore = scoreSpam(rawData);
   const flagged = spamScore >= 0.5 ? 1 : 0;
-  const ipHash = req.ip ? hashIp(req.ip) : null;
 
   const [submission] = await db.insert(formSubmissionsTable).values({
     siteId: site.id,
     formName: formName.slice(0, 100),
     data,
-    ipHash,
-    userAgent: (req.headers["user-agent"] ?? "").slice(0, 500),
     spamScore,
     flagged,
   }).returning({ id: formSubmissionsTable.id });

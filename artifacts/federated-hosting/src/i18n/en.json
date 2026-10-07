@@ -119,21 +119,22 @@
       "30d": "30 days"
     },
     "stats": {
-      "totalHits": "Total Hits",
-      "uniqueVisitors": "Unique Visitors",
-      "bandwidth": "Bandwidth",
-      "allTimeHits": "All-time Hits"
+      "totalHits": "Page Views",
+      "allTimeHits": "All-time Views",
+      "pagesViewed": "Pages Viewed",
+      "today": "Views Today"
     },
-    "hitsOverTime": "Hits Over Time",
-    "hitsSubtitle": "Request count per bucket for the selected period",
+    "hitsOverTime": "Page Views Over Time",
+    "hitsSubtitle": "Page views per day for the selected period",
     "topPages": "Top Pages",
-    "topPagesSubtitle": "Most-served file paths",
-    "topReferrers": "Top Referrers",
-    "topReferrersSubtitle": "Where your traffic is coming from",
+    "topPagesSubtitle": "Most-viewed pages",
     "noData": "No traffic data for this period yet.",
     "noPathData": "No path data yet.",
-    "noReferrerData": "No referrer data yet.",
-    "direct": "(direct)"
+    "perPage": "Views per Page per Day",
+    "perPageSubtitle": "One row per page per day. No visitor data is collected.",
+    "colDay": "Day",
+    "colPage": "Page",
+    "colViews": "Views"
   },
   "tokens": {
     "title": "API Tokens",
