@@ -116,14 +116,14 @@ router.post("/sites", writeLimiter, asyncHandler(async (req, res) => {
   const [existing] = await db.select().from(sitesTable).where(eq(sitesTable.domain, parsed.data.domain));
   if (existing) throw AppError.conflict(`Domain '${parsed.data.domain}' is already registered`);
 
-  const [site] = await db.insert(sitesTable).values(parsed.data).returning();
+  const [site] = await db.insert(sitesTable).values({ ...parsed.data, ownerId: req.user.id }).returning();
   const [joined] = await db
     .select(SITE_SELECT)
     .from(sitesTable)
     .leftJoin(nodesTable, eq(sitesTable.primaryNodeId, nodesTable.id))
     .where(eq(sitesTable.id, site.id));
 
-  res.status(201).json(GetSiteResponse.parse(serializeDates(joined)));
+  res.status(201).json(GetSiteResponse.omit({ ownerEmail: true }).parse(serializeDates(joined)));
 }));
 
 router.get("/sites/:id", asyncHandler(async (req, res) => {
