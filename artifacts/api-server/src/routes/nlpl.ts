@@ -33,6 +33,7 @@ import { z } from "zod/v4";
 import { db, sitesTable, siteFilesTable, siteDeploymentsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { asyncHandler, AppError } from "../lib/errors";
+import { requireSiteAccess } from "../lib/siteAccess";
 import { writeLimiter } from "../middleware/rateLimiter";
 import { requireAdmin } from "../middleware/requireAdmin";
 import {
@@ -233,6 +234,8 @@ router.get(
     const siteId = parseInt(req.params.id as string, 10);
     if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
 
+    await requireSiteAccess(req, siteId, "read");
+
     const entry = getSiteProcess(siteId);
 
     if (!entry) {
@@ -263,6 +266,8 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const siteId = parseInt(req.params.id as string, 10);
     if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
+
+    await requireSiteAccess(req, siteId, "read");
 
     const tail = Math.min(parseInt((req.query.tail as string) ?? "100", 10), 500);
     const lines = getProcessLogs(siteId, tail);

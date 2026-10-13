@@ -4,6 +4,7 @@ import { eq, and, isNull, count, desc, sql, sum } from "drizzle-orm";
 import { storage, ObjectNotFoundError } from "../lib/storageProvider";
 import { signMessage } from "../lib/federation";
 import { asyncHandler, AppError } from "../lib/errors";
+import { requireSiteAccess } from "../lib/siteAccess";
 import { uploadLimiter, writeLimiter, deployLimiter } from "../middleware/rateLimiter";
 import { requireScope } from "../middleware/tokenAuth";
 import { notifyDeploy, notifyDeployFailed } from "../lib/webhooks";
@@ -38,16 +39,13 @@ function sanitizeFilePath(filePath: string): string {
 }
 
 router.post("/sites/:id/files/upload-url", uploadLimiter, asyncHandler(async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) throw AppError.unauthorized();
-
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
 
+  await requireSiteAccess(req, siteId, "write");
+
   const parsed = GetSiteFileUploadUrlBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest(parsed.error.message);
-
-  const [site] = await db.select().from(sitesTable).where(eq(sitesTable.id, siteId));
-  if (!site) throw AppError.notFound("Site not found");
 
   const { filePath, contentType, size } = parsed.data;
 
@@ -64,16 +62,13 @@ router.post("/sites/:id/files/upload-url", uploadLimiter, asyncHandler(async (re
 }));
 
 router.post("/sites/:id/files", asyncHandler(async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) throw AppError.unauthorized();
-
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
 
+  await requireSiteAccess(req, siteId, "write");
+
   const parsed = RegisterSiteFileBody.safeParse(req.body);
   if (!parsed.success) throw AppError.badRequest(parsed.error.message);
-
-  const [site] = await db.select().from(sitesTable).where(eq(sitesTable.id, siteId));
-  if (!site) throw AppError.notFound("Site not found");
 
   const { filePath, objectPath, contentType, sizeBytes, contentHash } = parsed.data as typeof parsed.data & { contentHash?: string };
 
@@ -108,6 +103,8 @@ router.post("/sites/:id/files", asyncHandler(async (req: Request, res: Response)
 router.get("/sites/:id/files", asyncHandler(async (req: Request, res: Response) => {
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
+
+  await requireSiteAccess(req, siteId, "read");
 
   const files = await db
     .select()
