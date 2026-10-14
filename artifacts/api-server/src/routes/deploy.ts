@@ -115,16 +115,19 @@ router.get("/sites/:id/files", asyncHandler(async (req: Request, res: Response) 
 }));
 
 router.post("/sites/:id/deploy", deployLimiter, requireScope("deploy"), asyncHandler(async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) throw AppError.unauthorized();
-
   const siteId = parseInt(req.params.id as string, 10);
   if (Number.isNaN(siteId)) throw AppError.badRequest("Invalid site ID");
+
+  // Enforces authentication, ownership, and membership in one place.
+  // requireSiteAccess throws 401/403/404 as appropriate; it also returns
+  // the site row so the fetch below is not needed.
+  const site = await requireSiteAccess(req, siteId, "write");
 
   // ── Email verification grace period enforcement ────────────────────────────
   // 7-day grace: unverified users get a warning header but can still deploy.
   // 30-day hard block: unverified users are blocked until they verify.
   // This only applies to human sessions — API token deploys skip this check.
-  if (req.isAuthenticated() && req.user?.id && !(req as any).isBearerToken) {
+  if (req.user?.id && !(req as any).isBearerToken) {
     const [userRecord] = await db
       .select({ emailVerified: usersTable.emailVerified, createdAt: usersTable.createdAt, isAdmin: usersTable.isAdmin })
       .from(usersTable)
@@ -169,9 +172,6 @@ router.post("/sites/:id/deploy", deployLimiter, requireScope("deploy"), asyncHan
       }
     }
   }
-
-  const [site] = await db.select().from(sitesTable).where(eq(sitesTable.id, siteId));
-  if (!site) throw AppError.notFound("Site not found");
 
   const pendingFiles = await db
     .select()
@@ -302,7 +302,7 @@ router.post("/sites/:id/deploy", deployLimiter, requireScope("deploy"), asyncHan
       .values({
         siteId,
         version: Number(depCount) + 1,
-        deployedBy: req.user.id,
+        deployedBy: req.user!.id,
         status: "active",
         fileCount: pendingFiles.length,
         totalSizeMb,
@@ -318,7 +318,7 @@ router.post("/sites/:id/deploy", deployLimiter, requireScope("deploy"), asyncHan
 
     await tx
       .update(sitesTable)
-      .set({ storageUsedMb: totalSizeMb, ownerId: req.user.id })
+      .set({ storageUsedMb: totalSizeMb })
       .where(eq(sitesTable.id, siteId));
 
     return dep;
