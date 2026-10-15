@@ -1,19 +1,6 @@
-/* Self-hosted. These were loaded from fonts.googleapis.com, which this app's
-   own CSP (style-src 'self' 'unsafe-inline') refuses — so for as long as the
-   design has existed, document.fonts held zero faces and every surface fell
-   back to the system sans. Measured in a browser, not inferred.
-
-   Serving them ourselves fixes that and means no visitor's browser contacts
-   Google to read this page. Weights are the ones the design actually uses;
-   adding one means adding its import here. */
-@import "@fontsource/manrope/400.css";
-@import "@fontsource/manrope/500.css";
-@import "@fontsource/manrope/600.css";
-@import "@fontsource/manrope/700.css";
-@import "@fontsource/syne/500.css";
-@import "@fontsource/syne/600.css";
-@import "@fontsource/syne/700.css";
-@import "@fontsource/syne/800.css";
+/* Self-hosted via @fontsource — no Google Fonts request, CSP-safe.
+   Figtree Variable covers all weights in one file. */
+@import "@fontsource-variable/figtree";
 @import "@fontsource-variable/fira-code";
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -66,9 +53,9 @@
   --color-status-suspended: hsl(var(--status-suspended));
   --color-status-migrating: hsl(var(--status-migrating));
 
-  --font-sans: 'Manrope', sans-serif;
-  --font-display: 'Syne', sans-serif;
-  --font-mono: 'Fira Code', monospace;
+  --font-sans: 'Figtree Variable', 'Figtree', sans-serif;
+  --font-display: 'Figtree Variable', 'Figtree', sans-serif;
+  --font-mono: 'Fira Code Variable', 'Fira Code', monospace;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -83,7 +70,7 @@
   
   --border: 230 15% 15%;
   --input: 230 15% 15%;
-  --ring: 185 100% 50%; /* Cyan ring */
+  --ring: 72 100% 50%;
 
   --card: 230 18% 9%;
   --card-foreground: 210 40% 98%;
@@ -93,9 +80,9 @@
   --popover-foreground: 210 40% 98%;
   --popover-border: 230 15% 15%;
 
-  /* Cyan primary */
-  --primary: 185 100% 45%;
-  --primary-foreground: 230 30% 10%;
+  /* Acid green primary — #ccff00 */
+  --primary: 72 100% 50%;
+  --primary-foreground: 0 0% 5%;
 
   /* Purple secondary */
   --secondary: 270 70% 60%;
@@ -113,11 +100,11 @@
   --sidebar: 230 22% 5%;
   --sidebar-foreground: 210 40% 98%;
   --sidebar-border: 230 15% 12%;
-  --sidebar-primary: 185 100% 45%;
-  --sidebar-primary-foreground: 230 30% 10%;
+  --sidebar-primary: 72 100% 50%;
+  --sidebar-primary-foreground: 0 0% 5%;
   --sidebar-accent: 230 15% 12%;
   --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 185 100% 50%;
+  --sidebar-ring: 72 100% 50%;
 
   /* Custom Status Colors */
   --status-active: 150 100% 40%;
@@ -136,8 +123,8 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
-    background-image: 
-      radial-gradient(circle at 15% 50%, rgba(0, 229, 255, 0.03), transparent 25%),
+    background-image:
+      radial-gradient(circle at 15% 50%, rgba(204, 255, 0, 0.03), transparent 25%),
       radial-gradient(circle at 85% 30%, rgba(153, 51, 255, 0.03), transparent 25%);
     background-attachment: fixed;
   }

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio, BookMarked, Key, Shield, Wifi, FileCode, BarChart2, User } from "lucide-react";
+import { LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio, BookMarked, Key, Shield, Wifi, FileCode, BarChart2, User } from "lucide-react";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { isEmbedded } from "@/embed";
 import { Button } from "@/components/ui/button";
@@ -63,11 +63,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               className={cn(
                 "flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 cursor-pointer group",
                 isActive 
-                  ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(0,229,255,0.1)]" 
+                  ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(204,255,0,0.1)]"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
             >
-              <Icon className={cn("w-5 h-5 transition-transform group-hover:scale-110", isActive && "drop-shadow-[0_0_8px_rgba(0,229,255,0.8)]")} />
+              <Icon className={cn("w-5 h-5 transition-transform group-hover:scale-110", isActive && "drop-shadow-[0_0_8px_rgba(204,255,0,0.8)]")} />
               {item.label}
             </div>
           </Link>
@@ -82,12 +82,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               onClick={() => setMobileOpen(false)}
               className={cn(
                 "flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 cursor-pointer group",
-                isActive 
-                  ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(0,229,255,0.1)]" 
+                isActive
+                  ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(204,255,0,0.1)]"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
             >
-              <Icon className={cn("w-5 h-5 transition-transform group-hover:scale-110", isActive && "drop-shadow-[0_0_8px_rgba(0,229,255,0.8)]")} />
+              <Icon className={cn("w-5 h-5 transition-transform group-hover:scale-110", isActive && "drop-shadow-[0_0_8px_rgba(204,255,0,0.8)]")} />
               {item.label}
             </div>
           </Link>
@@ -100,9 +100,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row font-sans selection:bg-primary/30">
       {/* Mobile Header */}
       <header className="md:hidden flex items-center justify-between p-4 border-b border-white/5 bg-background/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center gap-2 text-primary">
-          <Activity className="w-6 h-6" />
-          <span className="font-display font-bold text-lg tracking-tight">NexusHosting</span>
+        <div className="flex items-center gap-2">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="text-primary shrink-0">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+          </svg>
+          <span className="font-display font-bold text-lg tracking-tight text-white">Nexus <span className="text-primary">Hosting</span></span>
         </div>
         <div className="flex items-center gap-2">
           {!embedded && <UserMenu user={user} isAuthenticated={isAuthenticated} login={login} logout={logout} />}
@@ -113,9 +115,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-[280px] bg-sidebar border-r border-white/5 p-6 flex flex-col">
-              <div className="flex items-center gap-2 text-primary mb-8 mt-2">
-                <Activity className="w-8 h-8 drop-shadow-[0_0_8px_rgba(0,229,255,0.5)]" />
-                <span className="font-display font-bold text-xl tracking-tight text-white">Federated<span className="text-primary">Hosting</span></span>
+              <div className="flex items-center gap-2 mb-8 mt-2">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="text-primary shrink-0">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+                <span className="font-display font-bold text-xl tracking-tight text-white">Nexus <span className="text-primary">Hosting</span></span>
               </div>
               <nav className="flex flex-col gap-2 flex-1">
                 <NavLinks />
@@ -131,10 +135,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/">
             <div className="flex items-center gap-3 cursor-pointer group">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 group-hover:border-primary/50 transition-colors">
-                <Activity className="w-6 h-6 text-primary drop-shadow-[0_0_8px_rgba(0,229,255,0.5)]" />
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className="text-primary">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
               </div>
               <div className="flex flex-col">
-                <span className="font-display font-bold text-lg leading-none tracking-tight text-white">Federated</span>
+                <span className="font-display font-bold text-lg leading-none tracking-tight text-white">Nexus</span>
                 <span className="font-display font-bold text-sm text-primary tracking-widest uppercase">Hosting</span>
               </div>
             </div>
