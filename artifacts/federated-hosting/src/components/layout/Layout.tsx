@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Server, Globe, Menu, Upload, LogOut, LogIn, Radio, BookMarked, Key, Shield, Wifi, FileCode, BarChart2, User } from "lucide-react";
+import { Globe, Menu, Upload, LogOut, LogIn, Radio, Key, Shield, Wifi, FileCode, BarChart2, User, PlusCircle, ChevronDown, ChevronRight, Server } from "lucide-react";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { isEmbedded } from "@/embed";
 import { Button } from "@/components/ui/button";
@@ -17,22 +17,25 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@workspace/auth-web";
 import { useHealthStatus } from "@/lib/apiHooks";
 
-const NAV_ITEMS = [
-  { href: "/",          label: "Dashboard",           icon: LayoutDashboard },
+// Primary items every user sees first — these are the hosting actions
+const USER_NAV_ITEMS = [
+  { href: "/my-sites", label: "My Sites",    icon: Globe },
+  { href: "/usage",    label: "Usage",       icon: BarChart2 },
+  { href: "/tokens",   label: "API Tokens",  icon: Key },
+  { href: "/settings/account", label: "Account", icon: User },
+];
+
+// Secondary items — public browsing when not signed in, admin/infra for operators
+const PUBLIC_NAV_ITEMS = [
+  { href: "/directory", label: "Site Directory", icon: Globe },
+];
+
+const NETWORK_NAV_ITEMS = [
   { href: "/nodes",     label: "Federation Nodes",    icon: Server },
-  { href: "/sites",     label: "Hosted Sites",        icon: Globe },
-  { href: "/directory", label: "Sites Directory",     icon: BookMarked },
   { href: "/network",   label: "Node Network",        icon: Wifi },
   { href: "/federation",label: "Federation Protocol", icon: Radio },
   { href: "/api-docs",  label: "API Reference",       icon: FileCode },
-];
-
-const AUTH_NAV_ITEMS = [
-  { href: "/my-sites", label: "My Sites", icon: Upload },
-  { href: "/usage",    label: "Usage",     icon: BarChart2 },
-  { href: "/tokens",   label: "API Tokens", icon: Key },
-  { href: "/settings/account", label: "Account",    icon: User },
-  { href: "/admin",              label: "Node Admin", icon: Shield },
+  { href: "/admin",     label: "Node Admin",           icon: Shield },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -51,48 +54,61 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const embedded = isEmbedded();
   const { data: health } = useHealthStatus();
 
+  const [networkExpanded, setNetworkExpanded] = useState(false);
+
+  const NavItem = ({ href, label, icon: Icon }: { href: string; label: string; icon: React.ElementType }) => {
+    const isActive = location === href || (href !== "/" && location.startsWith(href));
+    return (
+      <Link key={href} href={href}>
+        <div
+          onClick={() => setMobileOpen(false)}
+          className={cn(
+            "flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 cursor-pointer group",
+            isActive
+              ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(204,255,0,0.1)]"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          )}
+        >
+          <Icon className={cn("w-5 h-5 transition-transform group-hover:scale-110", isActive && "drop-shadow-[0_0_8px_rgba(204,255,0,0.8)]")} />
+          {label}
+        </div>
+      </Link>
+    );
+  };
+
   const NavLinks = () => (
     <>
-      {NAV_ITEMS.map((item) => {
-        const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
-        const Icon = item.icon;
-        return (
-          <Link key={item.href} href={item.href}>
+      {isAuthenticated ? (
+        <>
+          {/* Deploy CTA — primary action */}
+          <Link href="/my-sites">
             <div
               onClick={() => setMobileOpen(false)}
-              className={cn(
-                "flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 cursor-pointer group",
-                isActive 
-                  ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(204,255,0,0.1)]"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm cursor-pointer bg-primary/10 border border-primary/25 text-primary hover:bg-primary/20 transition-all"
             >
-              <Icon className={cn("w-5 h-5 transition-transform group-hover:scale-110", isActive && "drop-shadow-[0_0_8px_rgba(204,255,0,0.8)]")} />
-              {item.label}
+              <PlusCircle className="w-5 h-5" />
+              Deploy a Site
             </div>
           </Link>
-        );
-      })}
-      {isAuthenticated && AUTH_NAV_ITEMS.map((item) => {
-        const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
-        const Icon = item.icon;
-        return (
-          <Link key={item.href} href={item.href}>
-            <div
-              onClick={() => setMobileOpen(false)}
-              className={cn(
-                "flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 cursor-pointer group",
-                isActive
-                  ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(204,255,0,0.1)]"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}
-            >
-              <Icon className={cn("w-5 h-5 transition-transform group-hover:scale-110", isActive && "drop-shadow-[0_0_8px_rgba(204,255,0,0.8)]")} />
-              {item.label}
-            </div>
-          </Link>
-        );
-      })}
+          {USER_NAV_ITEMS.map(item => <NavItem key={item.href} {...item} />)}
+        </>
+      ) : (
+        <>
+          {PUBLIC_NAV_ITEMS.map(item => <NavItem key={item.href} {...item} />)}
+        </>
+      )}
+
+      {/* Network / advanced — collapsed by default */}
+      <div className="mt-2">
+        <button
+          onClick={() => setNetworkExpanded(v => !v)}
+          className="flex items-center gap-2 w-full px-4 py-2 text-xs font-mono text-muted-foreground/60 uppercase tracking-wider hover:text-muted-foreground transition-colors"
+        >
+          {networkExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          Network &amp; Admin
+        </button>
+        {networkExpanded && NETWORK_NAV_ITEMS.map(item => <NavItem key={item.href} {...item} />)}
+      </div>
     </>
   );
 
@@ -147,8 +163,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
 
-        <nav className="flex-1 px-4 py-6 flex flex-col gap-2">
-          <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2 px-4">Network Ops</div>
+        <nav className="flex-1 px-4 py-4 flex flex-col gap-1 overflow-y-auto">
           <NavLinks />
         </nav>
 

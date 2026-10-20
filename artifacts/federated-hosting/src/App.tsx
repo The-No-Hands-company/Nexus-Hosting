@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider, MutationCache, QueryCache } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout/Layout";
 import { lazy, Suspense } from "react";
 import { LoadingState } from "@/components/shared";
+import { useAuth } from "@workspace/auth-web";
 
 // Lazy-load all pages so each route is a separate chunk.
 // Initial bundle only ships the shell (Layout, QueryClient, Router).
@@ -61,6 +62,11 @@ const queryClient = new QueryClient({
   },
 });
 
+function HomeRedirect() {
+  const { isAuthenticated } = useAuth();
+  return <Redirect to={isAuthenticated ? "/my-sites" : "/directory"} />;
+}
+
 function Router() {
   return (
     <Switch>
@@ -73,7 +79,7 @@ function Router() {
           <ErrorBoundary>
             <Suspense fallback={<LoadingState />}>
               <Switch>
-            <Route path="/" component={Dashboard} />
+            <Route path="/" component={HomeRedirect} />
             <Route path="/nodes" component={NodeList} />
             <Route path="/nodes/:id" component={NodeDetail} />
             <Route path="/sites" component={SiteList} />
