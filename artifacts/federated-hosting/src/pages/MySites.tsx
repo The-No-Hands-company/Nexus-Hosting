@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@workspace/auth-web";
 import { useSites } from "@/lib/apiHooks";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Globe, Upload, ExternalLink, Plus, LogIn, Eye, Clock, Zap, BarChart2, Settings, Inbox, GitBranch, Webhook, MoreHorizontal, Copy, Send, Download, Trash2, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -214,6 +214,7 @@ export default function MySites() {
   const { t } = useTranslation();
   const { data: allSites, isLoading, refetch } = useSites();
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [, navigate] = useLocation();
 
   if (!isAuthenticated) {
     return (
@@ -249,14 +250,14 @@ export default function MySites() {
           <DialogTrigger asChild>
             <Button className="bg-primary text-black hover:bg-primary/90 font-semibold shadow-lg shadow-primary/20">
               <Plus className="w-4 h-4 mr-2" />
-              Register Site
+              New site
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px] border-white/10 bg-card">
+          <DialogContent className="sm:max-w-[480px] border-white/10 bg-card">
             <DialogHeader>
-              <DialogTitle className="font-display text-2xl">Register New Site</DialogTitle>
+              <DialogTitle className="font-display text-2xl">Create a new site</DialogTitle>
             </DialogHeader>
-            <SiteForm onSuccess={() => { setRegisterOpen(false); refetch(); }} />
+            <SiteForm onSuccess={(site) => { setRegisterOpen(false); refetch(); navigate(`/deploy/${site.id}`); }} />
           </DialogContent>
         </Dialog>
       </div>
@@ -280,20 +281,13 @@ export default function MySites() {
               </p>
             </div>
             <div className="flex flex-col items-center gap-3 w-full max-w-xs">
-              <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
-                <DialogTrigger asChild>
-                  <Button className="w-full bg-primary text-black hover:bg-primary/90 font-semibold">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Register Your First Site
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[600px] border-white/10 bg-card">
-                  <DialogHeader>
-                    <DialogTitle className="font-display text-2xl">Register New Site</DialogTitle>
-                  </DialogHeader>
-                  <SiteForm onSuccess={() => { setRegisterOpen(false); refetch(); }} />
-                </DialogContent>
-              </Dialog>
+              <Button
+                className="w-full bg-primary text-black hover:bg-primary/90 font-semibold"
+                onClick={() => setRegisterOpen(true)}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create your first site
+              </Button>
               <p className="text-xs text-muted-foreground font-mono text-center">
                 Free · Decentralized · No vendor lock-in
               </p>
