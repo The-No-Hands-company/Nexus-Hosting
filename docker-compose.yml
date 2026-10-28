@@ -188,6 +188,11 @@ services:
       # Public domain/hostname where this node is reachable from other nodes.
       PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
 
+      # Origins allowed to embed this app in an iframe (e.g. the ecosystem shell).
+      # Defaults to https://app.<PUBLIC_DOMAIN> which is wrong when PUBLIC_DOMAIN
+      # is the service's own hostname. Set this explicitly to the shell origin.
+      SHELL_ORIGINS: ${SHELL_ORIGINS:-https://app.tnhc.dev}
+
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
 
       # ── Redis (shared rate limiting + cache) ─────────────────────────────
