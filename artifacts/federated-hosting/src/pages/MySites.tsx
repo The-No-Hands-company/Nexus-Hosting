@@ -2,13 +2,14 @@ import { useState } from "react";
 import { useAuth } from "@workspace/auth-web";
 import { useSites } from "@/lib/apiHooks";
 import { Link, useLocation } from "wouter";
-import { Globe, Upload, ExternalLink, Plus, LogIn, Eye, Clock, Zap, BarChart2, Settings, Inbox, GitBranch, Webhook, MoreHorizontal, Copy, Send, Download, Trash2, Flag } from "lucide-react";
+import { Globe, Upload, ExternalLink, Plus, LogIn, Eye, Clock, BarChart2, Settings, Inbox, GitBranch, Webhook, MoreHorizontal, Copy, Send, Download, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SiteForm } from "@/components/forms/SiteForm";
+import { OnboardingBanner, OnboardingModal, useOnboarding } from "@/components/Onboarding";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -214,6 +215,8 @@ export default function MySites() {
   const { t } = useTranslation();
   const { data: allSites, isLoading, refetch } = useSites();
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const { shouldShow: showOnboarding } = useOnboarding();
   const [, navigate] = useLocation();
 
   if (!isAuthenticated) {
@@ -238,6 +241,11 @@ export default function MySites() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {showOnboarding && (
+        <OnboardingBanner onOpen={() => setOnboardingOpen(true)} />
+      )}
+      <OnboardingModal open={onboardingOpen} onClose={() => setOnboardingOpen(false)} />
+
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">{t("mySites.title")}</h1>
@@ -354,43 +362,18 @@ export default function MySites() {
                   </div>
 
                   <div className="flex gap-2 pt-1">
+                    {/* Primary action — most users only ever need this */}
                     <Link href={`/deploy/${site.id}`} className="flex-1">
                       <Button
                         size="sm"
                         className="w-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 font-semibold"
                       >
-                        <Zap className="w-3.5 h-3.5 mr-1.5" />
-                        Deploy
+                        <Upload className="w-3.5 h-3.5 mr-1.5" />
+                        Upload Files
                       </Button>
                     </Link>
-                    <Link href={`/analytics/${site.id}`}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-white/10 text-muted-foreground hover:text-white"
-                        title="View analytics"
-                      >
-                        <BarChart2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </Link>
-                    <Link href={`/sites/${site.id}/settings`}>
-                      <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white" title="Site settings">
-                        <Settings className="w-3.5 h-3.5" />
-                      </Button>
-                    </Link>
-                    <Link href={`/sites/${site.id}/forms`}>
-                      <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white" title="Form submissions">
-                        <Inbox className="w-3.5 h-3.5" />
-                      </Button>
-                    </Link>
-                    <Link href={`/sites/${site.id}/webhooks`}>
-                      <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white" title="Webhooks"><Webhook className="w-3.5 h-3.5" /></Button>
-                    </Link>
-                    <Link href={`/sites/${site.id}/builds`}>
-                      <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white" title="Build history">
-                        <GitBranch className="w-3.5 h-3.5" />
-                      </Button>
-                    </Link>
+
+                    {/* Open live site */}
                     <a
                       href={`/api/sites/serve/${site.domain}/index.html`}
                       target="_blank"
@@ -405,16 +388,51 @@ export default function MySites() {
                         <ExternalLink className="w-3.5 h-3.5" />
                       </Button>
                     </a>
-                    <Link href={`/sites/${site.id}`}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-white/10 text-muted-foreground hover:text-white"
-                        title="Site settings"
-                      >
-                        <Globe className="w-3.5 h-3.5" />
+
+                    {/* Settings */}
+                    <Link href={`/sites/${site.id}/settings`}>
+                      <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white" title="Site settings">
+                        <Settings className="w-3.5 h-3.5" />
                       </Button>
                     </Link>
+
+                    {/* Secondary actions collapsed into one dropdown */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="outline" className="border-white/10 text-muted-foreground hover:text-white" title="More">
+                          <MoreHorizontal className="w-3.5 h-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48 bg-card border-white/10">
+                        <Link href={`/analytics/${site.id}`}>
+                          <DropdownMenuItem className="gap-2 cursor-pointer">
+                            <BarChart2 className="w-3.5 h-3.5" />Analytics
+                          </DropdownMenuItem>
+                        </Link>
+                        <Link href={`/sites/${site.id}/builds`}>
+                          <DropdownMenuItem className="gap-2 cursor-pointer">
+                            <GitBranch className="w-3.5 h-3.5" />Build history
+                          </DropdownMenuItem>
+                        </Link>
+                        <Link href={`/sites/${site.id}/forms`}>
+                          <DropdownMenuItem className="gap-2 cursor-pointer">
+                            <Inbox className="w-3.5 h-3.5" />Form submissions
+                          </DropdownMenuItem>
+                        </Link>
+                        <Link href={`/sites/${site.id}/webhooks`}>
+                          <DropdownMenuItem className="gap-2 cursor-pointer">
+                            <Webhook className="w-3.5 h-3.5" />Webhooks
+                          </DropdownMenuItem>
+                        </Link>
+                        <DropdownMenuSeparator className="bg-white/5" />
+                        <Link href={`/sites/${site.id}`}>
+                          <DropdownMenuItem className="gap-2 cursor-pointer">
+                            <Globe className="w-3.5 h-3.5" />Site overview
+                          </DropdownMenuItem>
+                        </Link>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
                     <SiteMoreMenu site={site} />
                   </div>
                 </CardContent>
