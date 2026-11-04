@@ -114,8 +114,12 @@ COPY lib/api-spec/openapi.yaml ./api-spec/openapi.yaml
 COPY --from=builder /app/artifacts/api-server/package.json ./package.json
 COPY --from=builder /app/prod-deps/node_modules ./node_modules
 
-# Non-root user for security
-RUN addgroup -S fhnode && adduser -S fhnode -G fhnode
+# Non-root user for security.
+# chmod before adduser: COPY --from=builder preserves builder permissions, which
+# on a fuseblk/NTFS build host may be 600 (owner-only). Ensure everything is at
+# least world-readable before the process drops to fhnode.
+RUN chmod -R a+rX /app \
+ && addgroup -S fhnode && adduser -S fhnode -G fhnode
 USER fhnode
 
 EXPOSE 8080

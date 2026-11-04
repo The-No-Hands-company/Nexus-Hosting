@@ -98,17 +98,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </>
       )}
 
-      {/* Network / advanced — collapsed by default */}
-      <div className="mt-2">
-        <button
-          onClick={() => setNetworkExpanded(v => !v)}
-          className="flex items-center gap-2 w-full px-4 py-2 text-xs font-mono text-muted-foreground/60 uppercase tracking-wider hover:text-muted-foreground transition-colors"
-        >
-          {networkExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-          Network &amp; Admin
-        </button>
-        {networkExpanded && NETWORK_NAV_ITEMS.map(item => <NavItem key={item.href} {...item} />)}
-      </div>
+      {/* Node operator / admin — only shown to admins, collapsed by default */}
+      {user?.isAdmin && (
+        <div className="mt-2">
+          <button
+            onClick={() => setNetworkExpanded(v => !v)}
+            className="flex items-center gap-2 w-full px-4 py-2 text-xs font-mono text-muted-foreground/60 uppercase tracking-wider hover:text-muted-foreground transition-colors"
+          >
+            {networkExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            Node Operator
+          </button>
+          {networkExpanded && NETWORK_NAV_ITEMS.map(item => <NavItem key={item.href} {...item} />)}
+        </div>
+      )}
     </>
   );
 

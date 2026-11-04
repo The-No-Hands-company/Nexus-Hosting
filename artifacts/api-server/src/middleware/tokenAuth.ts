@@ -71,16 +71,18 @@ export async function tokenAuthMiddleware(
     // Update lastUsedAt fire-and-forget
     db.update(apiTokensTable).set({ lastUsedAt: now }).where(eq(apiTokensTable.id, row.id)).catch(() => {});
 
-    const [user] = await db
+    const [rawUser] = await db
       .select({
         id:              usersTable.id,
         email:           usersTable.email,
         firstName:       usersTable.firstName,
         lastName:        usersTable.lastName,
         profileImageUrl: usersTable.profileImageUrl,
+        isAdmin:         usersTable.isAdmin,
       })
       .from(usersTable)
       .where(eq(usersTable.id, row.userId));
+    const user = rawUser ? { ...rawUser, isAdmin: rawUser.isAdmin === 1 } : undefined;
 
     if (user) {
       req.user = user;
