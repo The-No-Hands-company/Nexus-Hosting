@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Globe, Menu, Upload, LogOut, LogIn, Radio, Key, Shield, Wifi, FileCode, BarChart2, User, PlusCircle, ChevronDown, ChevronRight, Server } from "lucide-react";
+import { Globe, Menu, Upload, LogOut, Radio, Key, Shield, Wifi, FileCode, BarChart2, User, PlusCircle, ChevronDown, ChevronRight, Server } from "lucide-react";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { isEmbedded } from "@/embed";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,7 @@ const NETWORK_NAV_ITEMS = [
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user, isAuthenticated, login, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
 
   // Inside the shell, identity belongs to the shell. It has already signed the
   // user in and shows who they are, so Hosting's own sign-in button and user
@@ -125,7 +125,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <span className="font-display font-bold text-lg tracking-tight text-white">Nexus <span className="text-primary">Hosting</span></span>
         </div>
         <div className="flex items-center gap-2">
-          {!embedded && <UserMenu user={user} isAuthenticated={isAuthenticated} login={login} logout={logout} />}
+          {!embedded && isAuthenticated && <UserMenu user={user} logout={logout} />}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="text-foreground">
@@ -189,12 +189,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <LogOut className="w-4 h-4" />
               </Button>
             </div>
-          ) : embedded ? null : (
-            <Button variant="outline" className="w-full border-primary/20 text-primary hover:bg-primary/10" onClick={login}>
-              <LogIn className="w-4 h-4 mr-2" />
-              Sign In
-            </Button>
-          )}
+          ) : null}
 
           <div className="bg-card/50 rounded-xl p-4 border border-white/5 flex flex-col gap-3">
             <div className="flex items-center justify-between text-xs font-mono">
@@ -235,20 +230,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-function UserMenu({ user, isAuthenticated, login, logout }: {
+function UserMenu({ user, logout }: {
   user: ReturnType<typeof useAuth>["user"];
-  isAuthenticated: boolean;
-  login: () => void;
   logout: () => void;
 }) {
-  if (!isAuthenticated) {
-    return (
-      <Button variant="ghost" size="sm" onClick={login} className="text-primary">
-        <LogIn className="w-4 h-4 mr-1" />
-        Sign In
-      </Button>
-    );
-  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
