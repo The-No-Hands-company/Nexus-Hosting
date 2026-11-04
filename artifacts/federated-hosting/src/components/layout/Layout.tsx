@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@workspace/auth-web";
 import { useHealthStatus } from "@/lib/apiHooks";
@@ -23,11 +23,6 @@ const USER_NAV_ITEMS = [
   { href: "/usage",    label: "Usage",       icon: BarChart2 },
   { href: "/tokens",   label: "API Tokens",  icon: Key },
   { href: "/settings/account", label: "Account", icon: User },
-];
-
-// Secondary items — public browsing when not signed in, admin/infra for operators
-const PUBLIC_NAV_ITEMS = [
-  { href: "/directory", label: "Site Directory", icon: Globe },
 ];
 
 const NETWORK_NAV_ITEMS = [
@@ -41,17 +36,17 @@ const NETWORK_NAV_ITEMS = [
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user, isAuthenticated, logout } = useAuth();
-
-  // Inside the shell, identity belongs to the shell. It has already signed the
-  // user in and shows who they are, so Hosting's own sign-in button and user
-  // menu are a second, contradictory set of controls on the same screen —
-  // which is what app.tnhc.dev/hosting showed until now.
-  //
-  // Page navigation is deliberately NOT hidden: the shell's sidebar lists
-  // apps, not Hosting's own pages, so removing this nav would strand someone
-  // inside the frame with no way to reach my-sites or deploy.
+  const { user, isLoading, isAuthenticated, logout } = useAuth();
   const embedded = isEmbedded();
+
+  // Hosting is a control panel — gate the entire app behind auth.
+  // The OIDC flow (/api/login, /api/callback) is handled server-side so it
+  // is never intercepted by this redirect.
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && !embedded) {
+      window.location.href = `/api/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+    }
+  }, [isLoading, isAuthenticated, embedded]);
   const { data: health } = useHealthStatus();
 
   const [networkExpanded, setNetworkExpanded] = useState(false);
@@ -78,25 +73,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const NavLinks = () => (
     <>
-      {isAuthenticated ? (
-        <>
-          {/* Deploy CTA — primary action */}
-          <Link href="/my-sites">
-            <div
-              onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm cursor-pointer bg-primary/10 border border-primary/25 text-primary hover:bg-primary/20 transition-all"
-            >
-              <PlusCircle className="w-5 h-5" />
-              Deploy a Site
-            </div>
-          </Link>
-          {USER_NAV_ITEMS.map(item => <NavItem key={item.href} {...item} />)}
-        </>
-      ) : (
-        <>
-          {PUBLIC_NAV_ITEMS.map(item => <NavItem key={item.href} {...item} />)}
-        </>
-      )}
+      {/* Deploy CTA — primary action */}
+      <Link href="/my-sites">
+        <div
+          onClick={() => setMobileOpen(false)}
+          className="flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm cursor-pointer bg-primary/10 border border-primary/25 text-primary hover:bg-primary/20 transition-all"
+        >
+          <PlusCircle className="w-5 h-5" />
+          Deploy a Site
+        </div>
+      </Link>
+      {USER_NAV_ITEMS.map(item => <NavItem key={item.href} {...item} />)}
 
       {/* Node operator / admin — only shown to admins, collapsed by default */}
       {user?.isAdmin && (
