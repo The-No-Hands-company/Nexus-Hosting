@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Server, Globe, Activity, HardDrive, ArrowUpRight, Loader2, Rocket, ChevronRight, BookOpen, BarChart2, GitBranch, Settings, Zap, Mail, AlertTriangle, X } from "lucide-react";
 import { LoadingState, ErrorState, StatusBadge } from "@/components/shared";
 import { formatGb, formatPercent } from "@/lib/utils";
+import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";

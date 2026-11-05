@@ -242,6 +242,7 @@ function DeploymentHistory({ siteId, deployments, onRollback, isRollingBack, rol
   siteId:number; deployments:Deployment[];
   onRollback:(depId:number)=>void; isRollingBack:boolean; rollingBackId:number|null;
 }) {
+  const { t } = useTranslation();
   const [diffingDepId, setDiffingDepId] = useState<number|null>(null);
   const STATUS_STYLE: Record<string,string> = {
     active:"border-status-active/30 text-status-active",
