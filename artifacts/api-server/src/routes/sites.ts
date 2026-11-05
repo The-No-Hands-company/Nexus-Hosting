@@ -137,7 +137,7 @@ router.get("/sites/:id", asyncHandler(async (req, res) => {
     .where(eq(sitesTable.id, params.data.id));
 
   if (!site) throw AppError.notFound(`Site ${params.data.id} not found`);
-  res.json(GetSiteResponse.parse(serializeDates(site)));
+  res.json(GetSiteResponse.omit({ ownerEmail: true }).parse(serializeDates(site)));
 }));
 
 router.patch("/sites/:id", writeLimiter, requireScope("write"), asyncHandler(async (req, res) => {
