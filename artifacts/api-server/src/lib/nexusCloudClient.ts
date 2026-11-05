@@ -109,8 +109,10 @@ export type NexusCloudToolRegistrationRequest = {
   id: string;
   name: string;
   description: string;
-  /** The public URL of this Hosting node — used by Cloud's reverse proxy */
+  /** Internal upstream URL the proxy routes to (e.g. http://localhost:8080) */
   upstreamUrl?: string;
+  /** Public-facing URL shown in the launcher grid */
+  publicUrl?: string;
   mode?: "standalone" | "orchestrated";
   exposed?: boolean;
   health?: "healthy" | "degraded" | "offline";
