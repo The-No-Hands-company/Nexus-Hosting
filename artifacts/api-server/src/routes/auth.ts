@@ -9,6 +9,7 @@ import {
   LogoutMobileSessionResponse,
 } from "@workspace/api-zod";
 import { db, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import {
   clearSession,
   getOidcConfig,
@@ -66,18 +67,29 @@ async function upsertUser(claims: Record<string, unknown>) {
       | null,
   };
 
-  const [user] = await db
-    .insert(usersTable)
-    .values(userData)
-    .onConflictDoUpdate({
-      target: usersTable.id,
-      set: {
-        ...userData,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
-  return user;
+  try {
+    const [user] = await db
+      .insert(usersTable)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: usersTable.id,
+        set: { ...userData, updatedAt: new Date() },
+      })
+      .returning();
+    return user;
+  } catch (err: any) {
+    // Email unique constraint: same email was registered under a different sub.
+    // Update the existing row's sub so the account stays accessible.
+    if (err.code === "23505" && err.constraint === "users_email_key" && userData.email) {
+      const [user] = await db
+        .update(usersTable)
+        .set({ ...userData, updatedAt: new Date() })
+        .where(eq(usersTable.email, userData.email))
+        .returning();
+      return user;
+    }
+    throw err;
+  }
 }
 
 router.get("/auth/user", (req: Request, res: Response) => {
