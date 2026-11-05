@@ -571,16 +571,22 @@ router.get("/sites/serve/:domain/*filePath", asyncHandler(async (req: Request, r
     }
   };
 
+  const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":'&#39;'}[c] ?? c));
+  const sn = esc(site.name);
+  const sd = esc(site.domain);
+
+  const sharedCss = `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:#09090b;color:#fafafa;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;position:relative;overflow:hidden}body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(0,229,255,.12) 0%,transparent 70%);pointer-events:none}.badge{display:inline-flex;align-items:center;gap:.4rem;font-size:.7rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;border-radius:999px;padding:.3rem .85rem;margin-bottom:2.5rem}.domain{font-family:'SF Mono','Fira Code',ui-monospace,monospace;font-size:.78rem;color:rgba(255,255,255,.3);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:.35rem .9rem;letter-spacing:.04em}footer{position:fixed;bottom:1.5rem;font-size:.68rem;color:rgba(255,255,255,.15);letter-spacing:.05em}`;
+
   const found = await serveFile(resolvedPath);
   if (!found && resolvedPath !== "index.html") {
     const indexFound = await serveFile("index.html");
     if (!indexFound) {
-      res.status(404).send("<!DOCTYPE html><html><body><h1>404</h1><p>Page not found.</p></body></html>");
+      res.status(404).send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>404 — ${sn}</title><style>${sharedCss}h1{font-size:clamp(3rem,10vw,6rem);font-weight:900;letter-spacing:-.04em;line-height:1;margin-bottom:.5rem;background:linear-gradient(135deg,#fff 40%,rgba(255,255,255,.4));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.sub{font-size:1rem;color:rgba(255,255,255,.4);text-align:center;margin-bottom:1.75rem}.home{margin-top:2rem;font-size:.85rem;color:rgba(0,229,255,.7);text-decoration:none;border:1px solid rgba(0,229,255,.2);border-radius:6px;padding:.4rem 1rem}.home:hover{background:rgba(0,229,255,.07)}.badge{color:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.1)}</style></head><body><span class="badge">${sn}</span><h1>404</h1><p class="sub">This page doesn't exist on this site.</p><div class="domain">${sd}</div><a href="/" class="home">← Back to home</a><footer>Hosted on Nexus</footer></body></html>`);
     }
     return;
   }
   if (!found) {
-    res.status(404).send("<!DOCTYPE html><html><body><h1>404</h1><p>This site has no index.html yet.</p></body></html>");
+    res.status(404).send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${sn} — Coming Soon</title><style>${sharedCss}h1{font-size:clamp(2rem,6vw,3.5rem);font-weight:800;letter-spacing:-.03em;text-align:center;line-height:1.1;margin-bottom:.75rem;background:linear-gradient(135deg,#fff 40%,rgba(255,255,255,.5));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.sub{font-size:1.05rem;color:rgba(255,255,255,.4);text-align:center;margin-bottom:2rem}.badge{color:#00e5ff;border:1px solid rgba(0,229,255,.25)}.badge::before{content:'';width:6px;height:6px;border-radius:50%;background:#00e5ff;animation:pulse 2s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.85)}}</style></head><body><span class="badge">Nexus Hosting</span><h1>${sn}</h1><p class="sub">Something great is on its way.</p><div class="domain">${sd}</div><footer>Powered by Nexus</footer></body></html>`);
   }
 }));
 
