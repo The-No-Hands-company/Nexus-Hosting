@@ -243,7 +243,6 @@ export default function Dashboard() {
       {!isAuthenticated && !shouldShow && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <Card className="border-primary/30 bg-primary/5 relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-transparent pointer-events-none" />
             <CardContent className="flex flex-col sm:flex-row items-start sm:items-center gap-4 py-5 px-6">
               <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
                 <Rocket className="w-5 h-5 text-primary" />
@@ -322,19 +321,19 @@ export default function Dashboard() {
                 <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorDeploy" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
                     </linearGradient>
                     <linearGradient id="colorEvent" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--secondary))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--secondary))" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="var(--nexus-color-state-info)" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="var(--nexus-color-state-info)" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                   <XAxis dataKey="label" stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} interval={3} />
                   <YAxis stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                    contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
                     labelStyle={{ color: 'rgba(255,255,255,0.6)', fontFamily: 'monospace' }}
                   />
                   <Legend
@@ -342,8 +341,8 @@ export default function Dashboard() {
                     iconType="circle"
                     iconSize={8}
                   />
-                  <Area type="monotone" dataKey="deployments" name="Deployments" stroke="hsl(var(--primary))" strokeWidth={2} fillOpacity={1} fill="url(#colorDeploy)" />
-                  <Area type="monotone" dataKey="events" name="Federation Events" stroke="hsl(var(--secondary))" strokeWidth={2} fillOpacity={1} fill="url(#colorEvent)" />
+                  <Area type="monotone" dataKey="deployments" name="Deployments" stroke="var(--primary)" strokeWidth={2} fillOpacity={1} fill="url(#colorDeploy)" />
+                  <Area type="monotone" dataKey="events" name="Federation Events" stroke="var(--nexus-color-state-info)" strokeWidth={2} fillOpacity={1} fill="url(#colorEvent)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}

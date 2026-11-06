@@ -445,7 +445,7 @@ export default function DeploySite() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div
-                className={cn("border-2 border-dashed rounded-xl p-10 text-center transition-all cursor-pointer",isDragOver?"border-primary bg-primary/5 shadow-[0_0_20px_rgba(0,229,255,0.1)]":"border-white/10 hover:border-white/20")}
+                className={cn("border-2 border-dashed rounded-xl p-10 text-center transition-all cursor-pointer",isDragOver?"border-primary bg-primary/5":"border-white/10 hover:border-white/20")}
                 onDragOver={e=>{e.preventDefault();setIsDragOver(true);}} onDragLeave={()=>setIsDragOver(false)}
                 onDrop={e=>{e.preventDefault();setIsDragOver(false);if(e.dataTransfer.files.length>0)addFiles(e.dataTransfer.files);}}
                 onClick={()=>fileInputRef.current?.click()}>

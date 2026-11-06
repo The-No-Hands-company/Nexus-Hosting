@@ -145,7 +145,7 @@ export function OnboardingBanner({ onOpen }: { onOpen: () => void }) {
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-transparent to-secondary/5 p-5"
+      className="relative overflow-hidden rounded-2xl border border-primary/20 bg-primary/5 p-5"
     >
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-primary/10 blur-2xl" />

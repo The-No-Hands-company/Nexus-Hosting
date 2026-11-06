@@ -66,7 +66,6 @@ export default function SiteList() {
             <Link href={`/sites/${site.id}`}>
               <Card className="glass-panel hover:border-secondary/50 transition-all duration-300 cursor-pointer h-full group hover:shadow-secondary/10">
                 <CardContent className="p-5 flex flex-col h-full relative">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-secondary/10 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                   
                   <div className="flex justify-between items-start mb-4">
                     <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center border border-secondary/20 group-hover:bg-secondary/20 transition-colors">

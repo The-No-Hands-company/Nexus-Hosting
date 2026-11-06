@@ -65,8 +65,6 @@ export default function NodeList() {
             <Link href={`/nodes/${node.id}`}>
               <Card className="glass-panel hover:border-primary/50 transition-all duration-300 cursor-pointer h-full group hover:shadow-primary/10">
                 <CardContent className="p-6 flex flex-col h-full relative">
-                  {/* Decorative corner */}
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-primary/20 to-transparent rounded-bl-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
                   
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">

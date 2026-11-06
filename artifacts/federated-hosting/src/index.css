@@ -5,53 +5,89 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
+/* Vendored copy of the ecosystem design tokens (packages/nexus-design in the
+   Nexus-Systems monorepo). Hosting builds from its own repo and Docker context,
+   so it cannot import that package; a drift test in the monorepo keeps this file
+   byte-identical to the generated output. Refresh it with `bun run vendor` from
+   packages/nexus-design — do not edit it here. */
+@import "./nexus-tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-card-border: hsl(var(--card-border));
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-card-border: var(--card-border);
 
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-popover-border: hsl(var(--popover-border));
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover-border: var(--popover-border);
 
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
 
-  --color-sidebar: hsl(var(--sidebar));
-  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
-  --color-sidebar-border: hsl(var(--sidebar-border));
-  --color-sidebar-primary: hsl(var(--sidebar-primary));
-  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
-  --color-sidebar-accent: hsl(var(--sidebar-accent));
-  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
-  --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
 
-  --color-status-active: hsl(var(--status-active));
-  --color-status-maintenance: hsl(var(--status-maintenance));
-  --color-status-inactive: hsl(var(--status-inactive));
-  --color-status-suspended: hsl(var(--status-suspended));
-  --color-status-migrating: hsl(var(--status-migrating));
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-status-active: var(--status-active);
+  --color-status-maintenance: var(--status-maintenance);
+  --color-status-inactive: var(--status-inactive);
+  --color-status-suspended: var(--status-suspended);
+  --color-status-migrating: var(--status-migrating);
+
+  /* State hues. Pages use Tailwind's raw red/amber/green/blue scales for errors,
+     warnings, success and info. Point each scale at the ecosystem state token
+     instead of rewriting hundreds of class names, the same way the Dashboard
+     aliases its zinc and amber scales: the utilities keep working and render in
+     the shared palette, and opacity modifiers (bg-red-500/10) still tint it.
+     Purple, violet, orange and yellow are deliberately NOT remapped — they carry
+     category meaning (HTTP methods, event types, site types) and folding them
+     into a state colour would make distinct categories look identical. */
+  --color-red-300: var(--nexus-color-state-danger);
+  --color-red-400: var(--nexus-color-state-danger);
+  --color-red-500: var(--nexus-color-state-danger);
+  --color-red-600: var(--nexus-color-state-danger);
+  --color-amber-200: var(--nexus-color-state-warning);
+  --color-amber-300: var(--nexus-color-state-warning);
+  --color-amber-400: var(--nexus-color-state-warning);
+  --color-amber-500: var(--nexus-color-state-warning);
+  --color-amber-600: var(--nexus-color-state-warning);
+  --color-green-300: var(--nexus-color-state-success);
+  --color-green-400: var(--nexus-color-state-success);
+  --color-green-500: var(--nexus-color-state-success);
+  --color-green-600: var(--nexus-color-state-success);
+  --color-emerald-300: var(--nexus-color-state-success);
+  --color-emerald-400: var(--nexus-color-state-success);
+  --color-emerald-500: var(--nexus-color-state-success);
+  --color-emerald-600: var(--nexus-color-state-success);
+  --color-blue-300: var(--nexus-color-state-info);
+  --color-blue-400: var(--nexus-color-state-info);
+  --color-blue-500: var(--nexus-color-state-info);
+  --color-blue-600: var(--nexus-color-state-info);
 
   --font-sans: 'Figtree Variable', 'Figtree', sans-serif;
   --font-display: 'Figtree Variable', 'Figtree', sans-serif;
@@ -63,57 +99,63 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Every shadcn variable below is an alias of an ecosystem token, so the
+   components pick up the shared palette — and any future theme or density
+   switch — without further changes. Names are kept so existing classes
+   (bg-card, text-muted-foreground, ...) are untouched. */
 :root {
-  /* DARK MODE BY DEFAULT FOR TECH/DEVOPS VIBE */
-  --background: 230 20% 6%;
-  --foreground: 210 40% 98%;
-  
-  --border: 230 15% 15%;
-  --input: 230 15% 15%;
-  --ring: 72 100% 50%;
+  --background: var(--nexus-color-bg-canvas);
+  --foreground: var(--nexus-color-text-primary);
 
-  --card: 230 18% 9%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 230 15% 15%;
+  --border: var(--nexus-color-bg-raised);
+  --input: var(--nexus-color-bg-raised);
+  --ring: var(--nexus-color-accent-primary);
 
-  --popover: 230 20% 8%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 230 15% 15%;
+  --card: var(--nexus-color-bg-surface);
+  --card-foreground: var(--nexus-color-text-primary);
+  --card-border: var(--nexus-color-bg-raised);
 
-  /* Acid green primary — #ccff00 */
-  --primary: 72 100% 50%;
-  --primary-foreground: 0 0% 5%;
+  --popover: var(--nexus-color-bg-elevated);
+  --popover-foreground: var(--nexus-color-text-primary);
+  --popover-border: var(--nexus-color-bg-raised);
 
-  /* Purple secondary */
-  --secondary: 270 70% 60%;
-  --secondary-foreground: 210 40% 98%;
+  /* The ecosystem has one accent. */
+  --primary: var(--nexus-color-accent-primary);
+  --primary-foreground: var(--nexus-color-text-inverse);
 
-  --muted: 230 15% 15%;
-  --muted-foreground: 215 20% 65%;
+  /* Hosting used a purple here as a second accent. The system defines no second
+     hue, so it follows the single accent; anything that must be told apart from
+     the primary (a second chart series, say) names a state colour explicitly. */
+  --secondary: var(--nexus-color-accent-primary);
+  --secondary-foreground: var(--nexus-color-text-inverse);
 
-  --accent: 230 20% 12%;
-  --accent-foreground: 210 40% 98%;
+  --muted: var(--nexus-color-bg-raised);
+  --muted-foreground: var(--nexus-color-text-secondary);
 
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
+  --accent: var(--nexus-color-bg-elevated);
+  --accent-foreground: var(--nexus-color-text-primary);
 
-  --sidebar: 230 22% 5%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 230 15% 12%;
-  --sidebar-primary: 72 100% 50%;
-  --sidebar-primary-foreground: 0 0% 5%;
-  --sidebar-accent: 230 15% 12%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 72 100% 50%;
+  --destructive: var(--nexus-color-state-danger);
+  /* Inverse text, not white: white on the danger red is ~3.6:1, below AA. */
+  --destructive-foreground: var(--nexus-color-text-inverse);
 
-  /* Custom Status Colors */
-  --status-active: 150 100% 40%;
-  --status-maintenance: 45 100% 50%;
-  --status-inactive: 220 10% 40%;
-  --status-suspended: 0 84% 60%;
-  --status-migrating: 210 100% 60%;
+  --sidebar: var(--nexus-color-bg-canvas);
+  --sidebar-foreground: var(--nexus-color-text-primary);
+  --sidebar-border: var(--nexus-color-bg-raised);
+  --sidebar-primary: var(--nexus-color-accent-primary);
+  --sidebar-primary-foreground: var(--nexus-color-text-inverse);
+  --sidebar-accent: var(--nexus-color-bg-elevated);
+  --sidebar-accent-foreground: var(--nexus-color-text-primary);
+  --sidebar-ring: var(--nexus-color-accent-primary);
 
-  --radius: 0.75rem; 
+  --status-active: var(--nexus-color-state-success);
+  --status-maintenance: var(--nexus-color-state-warning);
+  --status-inactive: var(--nexus-color-text-muted);
+  --status-suspended: var(--nexus-color-state-danger);
+  --status-migrating: var(--nexus-color-state-info);
+
+  /* 10px, so sm/md/lg/xl resolve to the system's 6/8/10/14. */
+  --radius: var(--nexus-radius-md);
 }
 
 @layer base {
@@ -121,12 +163,11 @@
     @apply border-border;
   }
 
+  /* A flat canvas. The page used to paint two faint radial colour washes
+     behind everything; no other app does, and they made Hosting read as a
+     different product. */
   body {
     @apply font-sans antialiased bg-background text-foreground;
-    background-image:
-      radial-gradient(circle at 15% 50%, rgba(204, 255, 0, 0.03), transparent 25%),
-      radial-gradient(circle at 85% 30%, rgba(153, 51, 255, 0.03), transparent 25%);
-    background-attachment: fixed;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -135,16 +176,15 @@
 }
 
 @layer utilities {
+  /* Kept under its old name so the ~20 call sites need no change, but it is a
+     plain surface now: no backdrop blur, no heavy shadow. */
   .glass-panel {
-    @apply bg-card/60 backdrop-blur-md border border-white/5 shadow-xl;
+    @apply bg-card border border-border;
   }
-  
+
+  /* A one-pixel accent ring in place of the diffuse glow. */
   .tech-glow {
-    box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.3);
-  }
-  
-  .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent);
   }
 
   /* Custom scrollbar for webkit */
