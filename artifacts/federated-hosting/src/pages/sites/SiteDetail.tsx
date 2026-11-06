@@ -56,7 +56,7 @@ export default function SiteDetail() {
 
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 bg-card/40 p-6 rounded-2xl border border-white/5 backdrop-blur-md">
         <div className="flex items-center gap-5 w-full lg:w-auto">
-          <div className="w-16 h-16 rounded-2xl bg-secondary/10 flex items-center justify-center border border-secondary/30 shrink-0 shadow-[0_0_20px_-5px_rgba(153,51,255,0.3)]">
+          <div className="w-16 h-16 rounded-2xl bg-secondary/10 flex items-center justify-center border border-secondary/30 shrink-0">
             <Globe className="w-8 h-8 text-secondary" />
           </div>
           <div className="min-w-0">

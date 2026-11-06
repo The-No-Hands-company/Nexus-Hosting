@@ -60,11 +60,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           className={cn(
             "flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 cursor-pointer group",
             isActive
-              ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(204,255,0,0.1)]"
+              ? "bg-primary/10 text-primary border border-primary/20"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           )}
         >
-          <Icon className={cn("w-5 h-5 transition-transform group-hover:scale-110", isActive && "drop-shadow-[0_0_8px_rgba(204,255,0,0.8)]")} />
+          <Icon className="w-5 h-5 transition-transform group-hover:scale-110" />
           {label}
         </div>
       </Link>
@@ -135,7 +135,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col fixed inset-y-0 border-r border-white/5 bg-sidebar/80 backdrop-blur-xl z-40">
+      <aside className="hidden md:flex w-64 flex-col fixed inset-y-0 border-r border-white/5 bg-sidebar z-40">
         <div className="p-6">
           <Link href="/">
             <div className="flex items-center gap-3 cursor-pointer group">

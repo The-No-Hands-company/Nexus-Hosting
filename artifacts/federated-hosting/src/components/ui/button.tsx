@@ -19,7 +19,10 @@ const buttonVariants = cva(
           // No hover state
           " border [border-color:var(--button-outline)] shadow-xs active:shadow-none ",
         secondary:
-          "border bg-secondary text-secondary-foreground border border-secondary-border ",
+          // Neutral, so it stays visibly below the lime primary. `secondary` is now
+          // an alias of the accent (the system has one), which would otherwise
+          // make this variant indistinguishable from `default`.
+          "border bg-muted text-foreground border-border hover:bg-muted/80",
         ghost: "border border-transparent",
         link: "text-primary underline-offset-4 hover:underline",
       },
